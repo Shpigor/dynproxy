@@ -73,11 +73,13 @@ func (f *Frontend) handleTlsAccept(listener net.Listener) {
 			err := tlsConn.Handshake()
 			if err != nil {
 				log.Printf("TLS handshake error: %+v", err)
+				log.Printf("TLS handshake status:[%+v]", tlsConn)
+				tlsConn.Close()
+				// TODO: notify about client error
+				continue
 			}
-			log.Printf("TLS handshake status: %+v", tlsConn.ConnectionState())
 			//configureSocket(tcpConn)
 			go readFromConnection(tlsConn)
-
 		}
 	}
 }
@@ -88,7 +90,7 @@ func readFromConnection(conn net.Conn) {
 		read, err := conn.Read(bb)
 		if err != nil {
 			if !errors.Is(io.EOF, err) {
-				log.Printf("error while reading: %+v", err)
+				//log.Printf("error while reading: %+v", err)
 			}
 		}
 		if read > 0 {
@@ -114,6 +116,7 @@ func (f *Frontend) listenTls(listener net.Listener) net.Listener {
 		RootCAs:               f.TlsConfig.caCertPool,
 		GetCertificate:        f.getFrontendCert,
 		VerifyPeerCertificate: f.verifyClientCert,
+		//ClientSessionCache: tls.NewLRUClientSessionCache(500),
 	}
 	return tls.NewListener(listener, config)
 }
