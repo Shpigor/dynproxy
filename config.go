@@ -41,7 +41,7 @@ type Config struct {
 	Backends  []BackendGroup   `yaml:"backends" toml:"backends"`
 }
 
-func LoadConfig(filePath string) *Config {
+func LoadConfig(filePath string) Config {
 	file, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		log.Fatalf("%+v", err)
@@ -56,7 +56,7 @@ func LoadConfig(filePath string) *Config {
 		log.Fatalf("%+v", err)
 	}
 	validateConfig(config)
-	return config
+	return *config
 }
 
 func validateConfig(config *Config) {

@@ -16,7 +16,7 @@
   [[backends.servers]]
     name="snmp1"
     net="tcp"
-    address="10.0.0.81:2031"
+    address="10.0.0.81:3030"
     health_check_period_sec=2
   [[backends.servers]]
     name="snmp2"

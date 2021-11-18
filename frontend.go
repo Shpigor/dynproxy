@@ -14,11 +14,13 @@ import (
 )
 
 type Frontend struct {
-	Context   context.Context
-	Net       string
-	Address   string
-	Name      string
-	TlsConfig *TlsConfig
+	Context         context.Context
+	Net             string
+	Address         string
+	Name            string
+	TlsConfig       *TlsConfig
+	connChannel     chan *newConn
+	defaultBalancer string
 }
 
 type TlsConfig struct {
@@ -55,7 +57,7 @@ func (f *Frontend) handleAccept(listener net.Listener) {
 			fmt.Println("error in casting *net.Conn to *net.TCPConn!")
 		} else {
 			configureSocket(tcpConn)
-			go readFromConnection(tcpConn)
+			f.handleNewConnection(tcpConn)
 		}
 	}
 }
@@ -73,13 +75,12 @@ func (f *Frontend) handleTlsAccept(listener net.Listener) {
 			err := tlsConn.Handshake()
 			if err != nil {
 				log.Printf("TLS handshake error: %+v", err)
-				log.Printf("TLS handshake status:[%+v]", tlsConn)
+				//log.Printf("TLS handshake status:[%+v]", tlsConn)
 				tlsConn.Close()
 				// TODO: notify about client error
 				continue
 			}
-			//configureSocket(tcpConn)
-			go readFromConnection(tlsConn)
+			f.handleNewConnection(tlsConn)
 		}
 	}
 }
@@ -157,6 +158,13 @@ func (f *Frontend) initTlsConfig() {
 	}
 	f.TlsConfig.Certificates = make(map[uint16]*tls.Certificate)
 	f.TlsConfig.Certificates[0] = &cert
+}
+
+func (f *Frontend) handleNewConnection(conn net.Conn) {
+	f.connChannel <- &newConn{
+		frontend: conn,
+		backend:  f.defaultBalancer,
+	}
 }
 
 func parseCaCertFile(filename string) (*x509.Certificate, error) {

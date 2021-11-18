@@ -7,28 +7,26 @@ import (
 	"net"
 )
 
-type PipeManager struct {
-	Pipes map[string]*Pipe
-}
-
-type Pipe struct {
+type pipe struct {
+	id       string
 	backend  net.Conn
 	frontend net.Conn
+	finish   chan string
 }
 
 // Start TODO: need to use epoll implementation
-func (p *Pipe) Start() {
+func (p *pipe) start() {
 	// TODO: need to make it dynamic
 	buffer := make([]byte, 1024)
 	for {
 		err := readWrite(p.frontend, p.backend, buffer)
 		if err != nil {
-			// TODO: close sessions
+			p.finish <- p.id
 			return
 		}
 		err = readWrite(p.backend, p.frontend, buffer)
 		if err != nil {
-			// TODO: close sessions
+			p.finish <- p.id
 			return
 		}
 	}
