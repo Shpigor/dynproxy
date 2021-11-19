@@ -7,7 +7,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"log"
 	"net"
@@ -85,21 +84,6 @@ func (f *Frontend) handleTlsAccept(listener net.Listener) {
 	}
 }
 
-func readFromConnection(conn net.Conn) {
-	bb := make([]byte, 1024)
-	for {
-		read, err := conn.Read(bb)
-		if err != nil {
-			if !errors.Is(io.EOF, err) {
-				//log.Printf("error while reading: %+v", err)
-			}
-		}
-		if read > 0 {
-			log.Printf(">%s\n", string(bb[:read]))
-		}
-	}
-}
-
 func configureSocket(tcpConn *net.TCPConn) {
 	//file, err := tcpConn.File()
 	//if err != nil {
@@ -129,6 +113,7 @@ func (f *Frontend) listen() (net.Listener, error) {
 func (f *Frontend) getFrontendCert(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	//cipherSuites := info.CipherSuites
 	certificate := f.TlsConfig.Certificates[0]
+	certificate.OCSPStaple = []byte("dummy ocsp")
 	if certificate != nil {
 		return certificate, nil
 	}

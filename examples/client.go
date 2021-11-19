@@ -6,6 +6,7 @@ import (
 	"encoding/pem"
 	"flag"
 	"fmt"
+	"golang.org/x/crypto/ocsp"
 	"io/ioutil"
 	"log"
 	"net"
@@ -13,25 +14,30 @@ import (
 )
 
 var useTls bool
+var validateOcsp bool
 var address string
 var caCertPath string
 var certPath string
 var keyPath string
+
+var caCert *x509.Certificate
 var certPool *x509.CertPool
 
 func init() {
+	var err error
 	flag.BoolVar(&useTls, "t", true, "use TLS connection.")
+	flag.BoolVar(&validateOcsp, "o", false, "validate OCSP response.")
 	flag.StringVar(&address, "a", "10.0.0.81:2030", "connection address to the nginx.")
 	flag.StringVar(&caCertPath, "ca", "/home/igor/ca/ca-cert.crt", "path to ca certificate file.")
-	flag.StringVar(&certPath, "c", "/home/igor/client.crt", "path to certificate file.")
-	flag.StringVar(&keyPath, "k", "/home/igor/client.pk", "path to private key file.")
+	flag.StringVar(&certPath, "c", "/home/igor/ca/client.crt", "path to certificate file.")
+	flag.StringVar(&keyPath, "k", "/home/igor/ca/client.pk", "path to private key file.")
 	flag.Parse()
 	certPool = x509.NewCertPool()
-	certFile, err := parseCertFile(caCertPath)
+	caCert, err = parseCertFile(caCertPath)
 	if err != nil {
 		log.Fatalf("can't parse ca certificate file.")
 	}
-	certPool.AddCert(certFile)
+	certPool.AddCert(caCert)
 }
 
 func main() {
@@ -61,16 +67,34 @@ func openConnection() (net.Conn, error) {
 			log.Fatalf("got error while parsing private key: %+v", err)
 		}
 		return tls.Dial("tcp", address, &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			RootCAs:      certPool,
-			VerifyPeerCertificate: func(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-				log.Printf("Verifying peer certificate: %+v", rawCerts)
-				return nil
-			},
+			Certificates:          []tls.Certificate{cert},
+			RootCAs:               certPool,
+			VerifyPeerCertificate: validateServerCert,
+			VerifyConnection:      verifyConnection,
 		})
 	} else {
 		return net.Dial("tcp", address)
 	}
+}
+
+func verifyConnection(state tls.ConnectionState) error {
+	if validateOcsp && state.OCSPResponse != nil {
+		log.Printf("Verifying peer connection: %+v", string(state.OCSPResponse))
+		_, err := ocsp.ParseResponse(state.OCSPResponse, caCert)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateServerCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
+	serverCert, err := x509.ParseCertificate(rawCerts[0])
+	if err != nil {
+		log.Printf("Verifying peer certificate error: %+v", err)
+	}
+	log.Printf("Verifying peer certificate: %+v", serverCert)
+	return nil
 }
 
 func parseCertFile(filename string) (*x509.Certificate, error) {
