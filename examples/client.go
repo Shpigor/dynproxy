@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto"
+	"crypto/rsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -108,4 +110,16 @@ func parseCertFile(filename string) (*x509.Certificate, error) {
 		return nil, err
 	}
 	return cert, nil
+}
+
+func verify() {
+
+	// To verify the signature, we provide the public key, the hashing algorithm
+	// the hash sum of our message and the signature we generated previously
+	// there is an optional "options" parameter which can omit for now
+	err = rsa.VerifyPSS(&publicKey, crypto.SHA256, msgHashSum, signature, nil)
+	if err != nil {
+		fmt.Println("could not verify signature: ", err)
+		return
+	}
 }
