@@ -57,7 +57,7 @@ func (cm *ContextManager) start() {
 		case newConn := <-cm.newFrontConn:
 			backendConn, err := getConnByBalancerName(newConn.backend)
 			if err != nil {
-
+				log.Warn().Msgf("can't create any new connections to the backends: %+v", err)
 			} else {
 				id := newConn.frontend.RemoteAddr().String() + "<->" + backendConn.RemoteAddr().String()
 				newPipe := &pipe{

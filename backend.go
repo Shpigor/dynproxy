@@ -2,7 +2,9 @@ package dynproxy
 
 import (
 	"context"
+	"errors"
 	"github.com/rs/zerolog/log"
+	"io"
 	"net"
 	"time"
 )
@@ -63,14 +65,15 @@ func (b *Backend) getBackendConn() (net.Conn, error) {
 }
 
 func (b *Backend) checkConnection() {
-	state := enabled
+	var state = enabled
 	conn, err := net.Dial(b.Net, b.Address)
 	if err != nil {
 		log.Debug().Msgf("got error while connecting to backend: %+v", err)
 		state = disabled
 	} else {
+		err := conn.SetReadDeadline(time.Now())
 		_, err = conn.Read(b.checkBuf)
-		if err != nil {
+		if err != nil && errors.Is(err, io.EOF) {
 			log.Debug().Msgf("got error while connecting to backend: %+v", err)
 			state = disabled
 		}

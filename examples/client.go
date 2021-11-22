@@ -3,6 +3,7 @@ package main
 import (
 	"crypto"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
@@ -23,6 +24,7 @@ var certPath string
 var keyPath string
 
 var caCert *x509.Certificate
+var peerCert *x509.Certificate
 var certPool *x509.CertPool
 
 func init() {
@@ -49,16 +51,7 @@ func main() {
 			log.Fatalf("got error while connecting to tcp server: %+v", err)
 		}
 		message := fmt.Sprintf("Hello: %d", i)
-		_, err = conn.Write([]byte(message))
-		if err != nil {
-			log.Fatalf("got error while writing to tcp server: %+v", err)
-		}
-		time.Sleep(time.Second * 2)
-
-		err = conn.Close()
-		if err != nil {
-			log.Printf("got error while closing connection to tcp server: %+v", err)
-		}
+		processConnection(message, conn)
 	}
 }
 
@@ -95,7 +88,8 @@ func validateServerCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate)
 	if err != nil {
 		log.Printf("Verifying peer certificate error: %+v", err)
 	}
-	log.Printf("Verifying peer certificate: %+v", serverCert)
+	//log.Printf("Verifying peer certificate: %+v", serverCert)
+	peerCert = serverCert
 	return nil
 }
 
@@ -112,14 +106,50 @@ func parseCertFile(filename string) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func verify() {
+func processConnection(msg string, conn net.Conn) {
+	timer := time.NewTimer(time.Duration(2) * time.Second)
+	defer timer.Stop()
 
-	// To verify the signature, we provide the public key, the hashing algorithm
-	// the hash sum of our message and the signature we generated previously
-	// there is an optional "options" parameter which can omit for now
-	err = rsa.VerifyPSS(&publicKey, crypto.SHA256, msgHashSum, signature, nil)
+	buffer := make([]byte, 1024)
+	message := []byte(msg)
+	_, err := conn.Write(message)
 	if err != nil {
-		fmt.Println("could not verify signature: ", err)
-		return
+		log.Fatalf("got error while writing to tcp server: %+v", err)
 	}
+	for {
+		read, err := conn.Read(buffer)
+		if err != nil {
+			log.Printf("got error while reading data from server: %+v", err)
+			break
+		}
+		if read > 0 {
+			err := verifySignature(message, buffer[:read])
+			if err != nil {
+				log.Printf("got timeout while verifying message signature:%+v", err)
+			}
+			return
+		}
+		select {
+		case <-timer.C:
+			log.Printf("got timeout while waiting for the response")
+			return
+		}
+	}
+	defer conn.Close()
+}
+
+func verifySignature(message, signature []byte) error {
+	msgHash := sha256.New()
+	_, err := msgHash.Write(message)
+	if err != nil {
+		return err
+	}
+	msgHashSum := msgHash.Sum(nil)
+	key := peerCert.PublicKey.(*rsa.PublicKey)
+
+	err = rsa.VerifyPSS(key, crypto.SHA256, msgHashSum, signature, nil)
+	if err != nil {
+		return err
+	}
+	return nil
 }

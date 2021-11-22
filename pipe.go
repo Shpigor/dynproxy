@@ -1,8 +1,6 @@
 package dynproxy
 
 import (
-	"errors"
-	"io"
 	"log"
 	"net"
 )
@@ -34,14 +32,14 @@ func (p *pipe) start() {
 
 func readWrite(src net.Conn, dst net.Conn, buffer []byte) error {
 	read, err := src.Read(buffer)
-	if err != nil && !errors.Is(err, io.EOF) {
-		log.Printf("got error while reading data from frontend")
+	if err != nil {
+		log.Printf("got error while reading data from frontend: %+v", err)
 		return err
 	}
 	if read > 0 {
 		_, err := dst.Write(buffer[:read])
 		if err != nil {
-			log.Printf("got error while writing data to backend")
+			log.Printf("got error while writing data to backend: %+v", err)
 			return err
 		}
 	}

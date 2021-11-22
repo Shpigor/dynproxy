@@ -20,7 +20,7 @@ var privateKeyPath string
 
 func init() {
 	flag.StringVar(&serverIp, "ip", "10.0.0.81", "listening ip address.")
-	flag.StringVar(&serverIp, "pk", "./", "path to private key")
+	flag.StringVar(&privateKeyPath, "pk", "/home/igor/ca/server.pk", "path to private key")
 	flag.IntVar(&serverPort, "p", 3030, "listening port.")
 	flag.Parse()
 }
@@ -74,12 +74,12 @@ func handleTcpSession(ln *net.TCPListener, pk *rsa.PrivateKey) {
 			log.Printf("got error while eccepting tcp session: %+v", err)
 			break
 		}
-		go readConn(accept, pk)
+		go readWriteConn(accept, pk)
 	}
 	log.Println("finished to accepting tcp connections")
 }
 
-func readConn(conn net.Conn, pk *rsa.PrivateKey) {
+func readWriteConn(conn net.Conn, pk *rsa.PrivateKey) {
 	bb := make([]byte, 2048)
 	defer conn.Close()
 	for {
@@ -90,25 +90,25 @@ func readConn(conn net.Conn, pk *rsa.PrivateKey) {
 			}
 			break
 		}
-		msg := string(bb[:read])
-		log.Println(">> " + msg)
-		ack, err := prepareResponseAck(msg, pk)
-		if err != nil {
-			log.Printf("got error while preparing signed response %+v", err)
-		}
-		_, err = conn.Write(ack)
-		if err != nil {
-			log.Printf("got error while writing signed response %+v", err)
-			break
+		if read > 0 {
+			msg := string(bb[:read])
+			log.Println(">> " + msg)
+			message, err := prepareResponseSignature(msg, pk)
+			if err != nil {
+				log.Printf("got error while preparing signed response %+v", err)
+			}
+			_, err = conn.Write(message)
+			if err != nil {
+				log.Printf("got error while writing signed response %+v", err)
+				break
+			}
 		}
 	}
 }
 
-func prepareResponseAck(message string, pk *rsa.PrivateKey) ([]byte, error) {
+func prepareResponseSignature(message string, pk *rsa.PrivateKey) ([]byte, error) {
 	msg := []byte(message)
 
-	// Before signing, we need to hash our message
-	// The hash is what we actually sign
 	msgHash := sha256.New()
 	_, err := msgHash.Write(msg)
 	if err != nil {
@@ -116,8 +116,5 @@ func prepareResponseAck(message string, pk *rsa.PrivateKey) ([]byte, error) {
 	}
 	msgHashSum := msgHash.Sum(nil)
 
-	// In order to generate the signature, we provide a random number generator,
-	// our private key, the hashing algorithm that we used, and the hash sum
-	// of our message
 	return rsa.SignPSS(rand.Reader, pk, crypto.SHA256, msgHashSum, nil)
 }
