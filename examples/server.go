@@ -6,6 +6,7 @@ import (
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
+	"dynproxy"
 	"encoding/pem"
 	"flag"
 	"io/ioutil"
@@ -75,6 +76,7 @@ func handleTcpSession(ln *net.TCPListener, pk *rsa.PrivateKey) {
 			break
 		}
 		go readWriteConn(accept, pk)
+		//go epollConnection(accept, pk)
 	}
 	log.Println("finished to accepting tcp connections")
 }
@@ -103,6 +105,56 @@ func readWriteConn(conn net.Conn, pk *rsa.PrivateKey) {
 				break
 			}
 		}
+	}
+}
+
+func epollConnection(conn net.Conn, pk *rsa.PrivateKey) {
+	poller, err := dynproxy.OpenPoller()
+	if err != nil {
+		log.Printf("got error while openning poller %+v", err)
+	}
+	fdConn, ok := conn.(dynproxy.FileDesc)
+	if !ok {
+		log.Printf("got error while casting net.Conn to FileDesc %+v", err)
+	}
+	file, err := fdConn.File()
+	if err != nil {
+		log.Printf("can't get file from FileDesc %+v", err)
+	}
+
+	err = poller.AddRead(&dynproxy.PollAttachment{FD: int(file.Fd())})
+	if err != nil {
+		log.Printf("can't add read fd to epoll %+v", err)
+	}
+	err = poller.Polling(epollReadCallback(conn, pk))
+}
+
+func epollReadCallback(conn net.Conn, pk *rsa.PrivateKey) func(fd int, ev uint32) error {
+	bb := make([]byte, 2048)
+
+	return func(fd int, ev uint32) error {
+		read, err := conn.Read(bb)
+		if err != nil {
+			if err.Error() == "EOF" {
+				conn.Close()
+				return err
+			} else {
+				log.Printf("got error while reading data from connection %+v", err)
+			}
+		}
+		if read > 0 {
+			msg := string(bb[:read])
+			log.Println(">> " + msg)
+			message, err := prepareResponseSignature(msg, pk)
+			if err != nil {
+				log.Printf("got error while preparing signed response %+v", err)
+			}
+			_, err = conn.Write(message)
+			if err != nil {
+				log.Printf("got error while writing signed response %+v", err)
+			}
+		}
+		return nil
 	}
 }
 
