@@ -6,15 +6,20 @@ import (
 	"flag"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"path/filepath"
 	"sync"
 )
 
 var config dynproxy.Config
 
 func init() {
-	configFilePath := flag.String("c", "/home/igor/code/dynproxy/cmd/config.toml", "path to configuration file.")
+	configFilePath := flag.String("c", "./cmd/config.toml", "path to configuration file.")
 	flag.Parse()
-	config = dynproxy.LoadConfig(*configFilePath)
+	absConfigPath, err := filepath.Abs(*configFilePath)
+	if err != nil {
+		log.Fatal().Msgf("got error while loading config file:%+v", err)
+	}
+	config = dynproxy.LoadConfig(absConfigPath)
 	initLog(config)
 }
 

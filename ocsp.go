@@ -15,10 +15,11 @@ import (
 const ocspMime = "application/ocsp-request"
 
 type OCSPProcessor struct {
-	ctx                   context.Context
-	ocspResponderUrl      string
-	enableCache           bool
-	enableOcspAutoRenewal bool
+	ctx                    context.Context
+	ocspStapleEnabled      bool
+	ocspResponderUrl       string
+	ocspCacheEnabled       bool
+	ocspAutoRenewalEnabled bool
 }
 
 func (o *OCSPProcessor) OcspVerify(cert, issuer *x509.Certificate) ([]byte, error) {

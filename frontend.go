@@ -20,6 +20,7 @@ type Frontend struct {
 	TlsConfig       *TlsConfig
 	connChannel     chan *newConn
 	defaultBalancer string
+	ocspProc        *OCSPProcessor
 }
 
 type TlsConfig struct {
@@ -113,7 +114,6 @@ func (f *Frontend) listen() (net.Listener, error) {
 func (f *Frontend) getFrontendCert(info *tls.ClientHelloInfo) (*tls.Certificate, error) {
 	//cipherSuites := info.CipherSuites
 	certificate := f.TlsConfig.Certificates[0]
-	certificate.OCSPStaple = []byte("dummy ocsp")
 	if certificate != nil {
 		return certificate, nil
 	}
@@ -121,11 +121,10 @@ func (f *Frontend) getFrontendCert(info *tls.ClientHelloInfo) (*tls.Certificate,
 }
 
 func (f *Frontend) verifyClientCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-	//log.Printf("validate client: %+v", rawCerts)
 	bytes := rawCerts[0]
-	certificate, _ := x509.ParseCertificate(bytes)
-	log.Printf("client cert: %+v", certificate)
-	return nil
+	_, err := x509.ParseCertificate(bytes)
+	//log.Printf("client cert: %+v", certificate)
+	return err
 }
 
 func (f *Frontend) initTlsConfig() {
@@ -141,8 +140,27 @@ func (f *Frontend) initTlsConfig() {
 	if err != nil {
 		log.Fatalf("got error while loading frontend certificate: %+v", err)
 	}
+	err = f.addOcspStaple(&cert, caCert)
+	if err != nil {
+		log.Fatalf("got error while verify(ocsp) frontend certificate: %+v", err)
+	}
 	f.TlsConfig.Certificates = make(map[uint16]*tls.Certificate)
 	f.TlsConfig.Certificates[0] = &cert
+}
+
+func (f *Frontend) addOcspStaple(cert *tls.Certificate, caCert *x509.Certificate) error {
+	if f.ocspProc != nil && f.ocspProc.ocspStapleEnabled {
+		x509Cert, err := x509.ParseCertificate(cert.Certificate[0])
+		if err != nil {
+			return err
+		}
+		ocspStaple, err := f.ocspProc.OcspVerify(x509Cert, caCert)
+		if err != nil {
+			return err
+		}
+		cert.OCSPStaple = ocspStaple
+	}
+	return nil
 }
 
 func (f *Frontend) handleNewConnection(conn net.Conn) {

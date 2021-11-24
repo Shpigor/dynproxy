@@ -39,6 +39,13 @@ func (cm *ContextManager) InitFrontends(config Config) {
 			Name:            frConfig.Name,
 			connChannel:     cm.newFrontConn,
 			defaultBalancer: frConfig.BackendGroup,
+			ocspProc: &OCSPProcessor{
+				ocspStapleEnabled:      frConfig.OcspStapleEnabled,
+				ctx:                    context.WithValue(frCtx, "channel", ""),
+				ocspResponderUrl:       frConfig.OcspResponderUrl,
+				ocspCacheEnabled:       frConfig.OcspCacheEnabled,
+				ocspAutoRenewalEnabled: frConfig.OcspAutoRenewalEnabled,
+			},
 			TlsConfig: &TlsConfig{
 				SkipVerify: frConfig.TlsSkipVerify,
 				CACertPath: frConfig.TlsCACertPath,

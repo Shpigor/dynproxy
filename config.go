@@ -13,14 +13,18 @@ type Global struct {
 }
 
 type FrontendConfig struct {
-	Name          string `yaml:"name" toml:"name"`
-	Net           string `yaml:"net" toml:"net"`
-	Address       string `yaml:"address" toml:"address"`
-	TlsSkipVerify bool   `yaml:"tls_skip_verify" toml:"tls_skip_verify"`
-	TlsCACertPath string `yaml:"tls_ca_cert_path" toml:"tls_ca_cert_path"`
-	TlsCertPath   string `yaml:"tls_cert_path" toml:"tls_cert_path"`
-	TlsPkPath     string `yaml:"tls_pk_path" toml:"tls_pk_path"`
-	BackendGroup  string `yaml:"backend_group" toml:"backend_group"`
+	Name                   string `yaml:"name" toml:"name"`
+	Net                    string `yaml:"net" toml:"net"`
+	Address                string `yaml:"address" toml:"address"`
+	TlsSkipVerify          bool   `yaml:"tls_skip_verify" toml:"tls_skip_verify"`
+	TlsCACertPath          string `yaml:"tls_ca_cert_path" toml:"tls_ca_cert_path"`
+	TlsCertPath            string `yaml:"tls_cert_path" toml:"tls_cert_path"`
+	TlsPkPath              string `yaml:"tls_pk_path" toml:"tls_pk_path"`
+	BackendGroup           string `yaml:"backend_group" toml:"backend_group"`
+	OcspStapleEnabled      bool   `yaml:"ocsp_staple_enabled" toml:"ocsp_staple_enabled"`
+	OcspResponderUrl       string `yaml:"ocsp_responder_url" toml:"ocsp_responder_url"`
+	OcspCacheEnabled       bool   `yaml:"ocsp_cache_enabled" toml:"ocsp_cache_enabled"`
+	OcspAutoRenewalEnabled bool   `yaml:"ocsp_auto_renewal_enabled" toml:"ocsp_auto_renewal_enabled"`
 }
 
 type BackendGroup struct {

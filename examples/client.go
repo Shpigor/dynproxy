@@ -30,7 +30,7 @@ var certPool *x509.CertPool
 func init() {
 	var err error
 	flag.BoolVar(&useTls, "t", true, "use TLS connection.")
-	flag.BoolVar(&validateOcsp, "o", false, "validate OCSP response.")
+	flag.BoolVar(&validateOcsp, "o", true, "validate OCSP response.")
 	flag.StringVar(&address, "a", "10.0.0.81:2030", "connection address to the nginx.")
 	flag.StringVar(&caCertPath, "ca", "/home/igor/ca/ca-cert.crt", "path to ca certificate file.")
 	flag.StringVar(&certPath, "c", "/home/igor/ca/client.crt", "path to certificate file.")
@@ -74,11 +74,11 @@ func openConnection() (net.Conn, error) {
 
 func verifyConnection(state tls.ConnectionState) error {
 	if validateOcsp && state.OCSPResponse != nil {
-		log.Printf("Verifying peer connection: %+v", string(state.OCSPResponse))
-		_, err := ocsp.ParseResponse(state.OCSPResponse, caCert)
+		resp, err := ocsp.ParseResponse(state.OCSPResponse, caCert)
 		if err != nil {
 			return err
 		}
+		log.Printf("Verifying peer connection: [%+v, %+v] %d - %d", resp.ProducedAt, resp.NextUpdate, resp.SerialNumber, resp.Status)
 	}
 	return nil
 }
