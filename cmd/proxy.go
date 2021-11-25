@@ -6,8 +6,10 @@ import (
 	"flag"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"os"
+	"os/signal"
 	"path/filepath"
-	"sync"
+	"syscall"
 )
 
 var config dynproxy.Config
@@ -33,11 +35,37 @@ func initLog(config dynproxy.Config) {
 
 func main() {
 	log.Info().Msg("starting proxy...")
-	group := sync.WaitGroup{}
-	group.Add(1)
-	mainCtx, _ := context.WithCancel(context.Background())
+	sigOsChan := make(chan int)
+	go handleSysSignals(sigOsChan)
+	mainCtx, mainCancelFn := context.WithCancel(context.Background())
 	manager := dynproxy.NewContextManager(mainCtx)
 	dynproxy.InitBalancers(mainCtx, config)
 	manager.InitFrontends(config)
-	group.Wait()
+	<-sigOsChan
+	mainCancelFn()
+	log.Info().Msg("proxy stopped")
+}
+
+func handleSysSignals(exitChan chan int) {
+	sysSignalChanel := make(chan os.Signal, 1)
+	signal.Notify(sysSignalChanel, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM, syscall.SIGQUIT)
+	for {
+		s := <-sysSignalChanel
+		switch s {
+		case syscall.SIGHUP: // kill -SIGHUP PID
+			log.Info().Msg("Signal hang up triggered.")
+		case syscall.SIGINT: // kill -SIGINT PID or Ctrl+c
+			log.Info().Msg("Signal interrupt triggered.")
+			exitChan <- 0
+		case syscall.SIGTERM: // kill -SIGTERM PID
+			log.Info().Msg("Signal terminte triggered.")
+			exitChan <- 0
+		case syscall.SIGQUIT: // kill -SIGQUIT PID
+			log.Info().Msg("Signal quit triggered.")
+			exitChan <- 0
+		default:
+			log.Info().Msg("Unknown signal.")
+			exitChan <- 1
+		}
+	}
 }
