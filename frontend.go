@@ -7,9 +7,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"github.com/rs/zerolog/log"
 	"io/ioutil"
-	"log"
 	"net"
+	"syscall"
 )
 
 type Frontend struct {
@@ -17,9 +18,9 @@ type Frontend struct {
 	Net             string
 	Address         string
 	Name            string
+	defaultBalancer string
 	TlsConfig       *TlsConfig
 	connChannel     chan *newConn
-	defaultBalancer string
 	ocspProc        *OCSPProcessor
 }
 
@@ -80,17 +81,26 @@ func (f *Frontend) handleTlsAccept(listener net.Listener) {
 				// TODO: notify about client error
 				continue
 			}
+			configureSocket(tlsConnToFileDesc(tlsConn))
 			f.handleNewConnection(tlsConn)
 		}
 	}
 }
 
-func configureSocket(tcpConn *net.TCPConn) {
-	//file, err := tcpConn.File()
-	//if err != nil {
-	//	log.Println("error in getting file for the connection!")
-	//}
-	//err = syscall.SetsockoptInt(int(file.Fd()), syscall.SOL_SOCKET, syscall.SO_PRIORITY, PRIORITY)
+func configureSocket(fd FileDesc) {
+	file, err := fd.File()
+	if err != nil {
+		log.Error().Msgf("error in getting file for the connection:%+v", err)
+	}
+	f := int(file.Fd())
+	err = syscall.SetsockoptInt(f, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 8192)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_RCVBUF: %+v", err)
+	}
+	err = syscall.SetsockoptInt(f, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 8192)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_SNDBUF: %+v", err)
+	}
 }
 
 func (f *Frontend) listenTls(listener net.Listener) net.Listener {
@@ -121,9 +131,7 @@ func (f *Frontend) getFrontendCert(info *tls.ClientHelloInfo) (*tls.Certificate,
 }
 
 func (f *Frontend) verifyClientCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-	bytes := rawCerts[0]
-	_, err := x509.ParseCertificate(bytes)
-	//log.Printf("client cert: %+v", certificate)
+	_, err := x509.ParseCertificate(rawCerts[0])
 	return err
 }
 
@@ -132,18 +140,19 @@ func (f *Frontend) initTlsConfig() {
 	f.TlsConfig.caCertPool = caCertPool
 	caCert, err := parseCaCertFile(f.TlsConfig.CACertPath)
 	if err != nil {
-		log.Fatalf("got error while loading CA cert: %+v", err)
+		log.Fatal().Msgf("got error while loading CA cert: %+v", err)
 	}
 	caCertPool.AddCert(caCert)
 
 	cert, err := parseCertFile(f.TlsConfig.CertPath, f.TlsConfig.PkPath)
 	if err != nil {
-		log.Fatalf("got error while loading frontend certificate: %+v", err)
+		log.Fatal().Msgf("got error while loading frontend certificate: %+v", err)
 	}
 	err = f.addOcspStaple(&cert, caCert)
 	if err != nil {
-		log.Fatalf("got error while verify(ocsp) frontend certificate: %+v", err)
+		log.Fatal().Msgf("got error while verify(ocsp) frontend certificate: %+v", err)
 	}
+
 	f.TlsConfig.Certificates = make(map[uint16]*tls.Certificate)
 	f.TlsConfig.Certificates[0] = &cert
 }

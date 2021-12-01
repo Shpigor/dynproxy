@@ -2,8 +2,8 @@ package dynproxy
 
 import (
 	"github.com/panjf2000/gnet/errors"
-	"github.com/panjf2000/gnet/logging"
 	"golang.org/x/sys/unix"
+	"log"
 	"os"
 	"runtime"
 )
@@ -12,9 +12,11 @@ const eventsChanSize = 1024
 const eventsBufferSize = 32
 
 const (
-	readEvents      = unix.EPOLLPRI | unix.EPOLLIN
-	writeEvents     = unix.EPOLLOUT
-	readWriteEvents = readEvents | writeEvents
+	readEvents       = unix.EPOLLPRI | unix.EPOLLIN
+	writeEvents      = unix.EPOLLOUT
+	readWriteEvents  = readEvents | writeEvents
+	errorEvents      = unix.EPOLLERR | unix.EPOLLHUP
+	readErrorsEvents = readEvents | errorEvents
 )
 
 type Poller struct {
@@ -54,7 +56,7 @@ func (p *Poller) Polling(callback func(fd int, ev uint32) error) error {
 			runtime.Gosched()
 			continue
 		} else if err != nil {
-			logging.Errorf("error occurs in epoll: %v", os.NewSyscallError("epoll_wait", err))
+			log.Printf("error occurs in epoll: %v", os.NewSyscallError("epoll_wait", err))
 			return err
 		}
 		msec = 0
@@ -67,7 +69,7 @@ func (p *Poller) Polling(callback func(fd int, ev uint32) error) error {
 				if err == errors.ErrAcceptSocket || err == errors.ErrServerShutdown {
 					return err
 				}
-				logging.Warnf("error occurs in event-loop: %v", err)
+				log.Printf("error occurs in event-loop: %v", err)
 			}
 		}
 	}
@@ -77,40 +79,48 @@ type PollAttachment struct {
 	FD int
 }
 
-func (p *Poller) AddReadWrite(pa *PollAttachment) error {
-	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, pa.FD, &unix.EpollEvent{Fd: int32(pa.FD), Events: readWriteEvents})
+func (p *Poller) AddReadErrors(fd int) error {
+	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readErrorsEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl add", err)
 	}
 	return nil
 }
 
-func (p *Poller) AddRead(pa *PollAttachment) error {
-	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, pa.FD, &unix.EpollEvent{Fd: int32(pa.FD), Events: readEvents})
+func (p *Poller) AddReadWrite(fd int) error {
+	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readWriteEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl add", err)
 	}
 	return nil
 }
 
-func (p *Poller) AddWrite(pa *PollAttachment) error {
-	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, pa.FD, &unix.EpollEvent{Fd: int32(pa.FD), Events: writeEvents})
+func (p *Poller) AddRead(fd int) error {
+	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl add", err)
 	}
 	return nil
 }
 
-func (p *Poller) ModRead(pa *PollAttachment) error {
-	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_MOD, pa.FD, &unix.EpollEvent{Fd: int32(pa.FD), Events: readEvents})
+func (p *Poller) AddWrite(fd int) error {
+	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: writeEvents})
+	if err != nil {
+		return os.NewSyscallError("epoll_ctl add", err)
+	}
+	return nil
+}
+
+func (p *Poller) ModRead(fd int) error {
+	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_MOD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl mod", err)
 	}
 	return nil
 }
 
-func (p *Poller) ModReadWrite(pa *PollAttachment) error {
-	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_MOD, pa.FD, &unix.EpollEvent{Fd: int32(pa.FD), Events: readWriteEvents})
+func (p *Poller) ModReadWrite(fd int) error {
+	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_MOD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readWriteEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl mod", err)
 	}
@@ -119,6 +129,14 @@ func (p *Poller) ModReadWrite(pa *PollAttachment) error {
 
 func (p *Poller) Delete(fd int) error {
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_DEL, fd, nil)
+	if err != nil {
+		return os.NewSyscallError("epoll_ctl del", err)
+	}
+	return nil
+}
+
+func (p *Poller) AddError(fd int) error {
+	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: errorEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl del", err)
 	}

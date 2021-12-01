@@ -6,7 +6,6 @@ import (
 	"crypto"
 	"crypto/x509"
 	"golang.org/x/crypto/ocsp"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -20,6 +19,17 @@ type OCSPProcessor struct {
 	ocspResponderUrl       string
 	ocspCacheEnabled       bool
 	ocspAutoRenewalEnabled bool
+}
+
+func NewOcspProcessor(ocspCtx context.Context, frConfig FrontendConfig) *OCSPProcessor {
+	ocspProcessor := &OCSPProcessor{
+		ocspStapleEnabled:      frConfig.OcspStapleEnabled,
+		ctx:                    ocspCtx,
+		ocspResponderUrl:       frConfig.OcspResponderUrl,
+		ocspCacheEnabled:       frConfig.OcspCacheEnabled,
+		ocspAutoRenewalEnabled: frConfig.OcspAutoRenewalEnabled,
+	}
+	return ocspProcessor
 }
 
 func (o *OCSPProcessor) OcspVerify(cert, issuer *x509.Certificate) ([]byte, error) {
@@ -41,12 +51,17 @@ func (o *OCSPProcessor) OcspVerify(cert, issuer *x509.Certificate) ([]byte, erro
 
 func (o *OCSPProcessor) sendOcspRequest(request []byte) ([]byte, error) {
 	rsp, err := http.Post(o.ocspResponderUrl, ocspMime, bytes.NewReader(request))
-	defer func(Body io.ReadCloser) {
-		err := Body.Close()
-		if err != nil {
-			log.Printf("got error while close http response: %+v", err)
+	defer func(resp *http.Response) {
+		if resp != nil {
+			if resp.Body != nil {
+				err := resp.Body.Close()
+				if err != nil {
+					log.Printf("got error while close http response: %+v", err)
+				}
+			}
 		}
-	}(rsp.Body)
+
+	}(rsp)
 	if err != nil {
 		return nil, err
 	}

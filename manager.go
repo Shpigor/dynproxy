@@ -31,7 +31,7 @@ func NewContextManager(ctx context.Context) *ContextManager {
 
 func (cm *ContextManager) InitFrontends(config Config) {
 	for _, frConfig := range config.Frontends {
-		frCtx := context.WithValue(cm.ctx, "channel", "")
+		frCtx := context.WithValue(cm.ctx, "name", frConfig.Name)
 		frontend := Frontend{
 			Context:         frCtx,
 			Net:             frConfig.Net,
@@ -39,13 +39,7 @@ func (cm *ContextManager) InitFrontends(config Config) {
 			Name:            frConfig.Name,
 			connChannel:     cm.newFrontConn,
 			defaultBalancer: frConfig.BackendGroup,
-			ocspProc: &OCSPProcessor{
-				ocspStapleEnabled:      frConfig.OcspStapleEnabled,
-				ctx:                    context.WithValue(frCtx, "channel", ""),
-				ocspResponderUrl:       frConfig.OcspResponderUrl,
-				ocspCacheEnabled:       frConfig.OcspCacheEnabled,
-				ocspAutoRenewalEnabled: frConfig.OcspAutoRenewalEnabled,
-			},
+			ocspProc:        NewOcspProcessor(context.WithValue(frCtx, "name", "OCSP"), frConfig),
 			TlsConfig: &TlsConfig{
 				SkipVerify: frConfig.TlsSkipVerify,
 				CACertPath: frConfig.TlsCACertPath,
