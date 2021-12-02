@@ -9,9 +9,10 @@ import (
 	"dynproxy"
 	"encoding/pem"
 	"flag"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 	"golang.org/x/sys/unix"
 	"io/ioutil"
-	"log"
 	"net"
 	"sync"
 )
@@ -22,32 +23,37 @@ var privateKeyPath string
 var connections map[int]net.Conn
 
 var lock = sync.RWMutex{}
-var poller *dynproxy.Poller
+var eventLoop *dynproxy.EventLoop
 
 func init() {
 	flag.StringVar(&serverIp, "ip", "10.0.0.81", "listening ip address.")
 	flag.StringVar(&privateKeyPath, "pk", "/home/igor/ca/server.pk", "path to private key")
 	flag.IntVar(&serverPort, "p", 3030, "listening port.")
 	flag.Parse()
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 }
 
 func main() {
+	group := &sync.WaitGroup{}
+	group.Add(1)
 	address := &net.TCPAddr{
 		IP:   net.ParseIP(serverIp),
 		Port: serverPort,
 	}
-	connections = make(map[int]net.Conn)
-	var err error
-	poller, err = dynproxy.OpenPoller()
-	if err != nil {
-		log.Fatalf("got error while openning poller %+v", err)
-	}
-	group := &sync.WaitGroup{}
-	group.Add(1)
 	pk, err := parsePk(privateKeyPath)
 	if err != nil {
-		log.Fatalf("can't read private key: %+v", err)
+		log.Fatal().Msgf("can't read private key: %+v", err)
 	}
+	eventLoop, err = dynproxy.NewEventLoop(dynproxy.EventLoopConfig{
+		Name:            "MainLoop",
+		EventBufferSize: 256,
+		LockOsThread:    true,
+	})
+	if err != nil {
+		log.Fatal().Msgf("can't create event loop: %+v", err)
+	}
+	connections = make(map[int]net.Conn)
+	go eventLoop.Start(epollReadCallback(pk))
 	tcpServer(group, pk, address)
 	group.Wait()
 }
@@ -74,85 +80,37 @@ func tcpServer(group *sync.WaitGroup, pk *rsa.PrivateKey, address *net.TCPAddr) 
 	tcp, err := net.ListenTCP("tcp", address)
 	if err != nil {
 		group.Done()
-		log.Fatalf("got error while listening socket: %+v", err)
+		log.Fatal().Msgf("got error while listening socket: %+v", err)
 	}
-	//go handleTcpSession(tcp, pk)
-	go handleEpollTcpSocketEvents(tcp, pk)
+	go handleEpollTcpSocketEvents(tcp)
 }
 
-func handleTcpSession(ln *net.TCPListener, pk *rsa.PrivateKey) {
-	for {
-		accept, err := ln.Accept()
-		if err != nil {
-			log.Printf("got error while eccepting tcp session: %+v", err)
-			break
-		}
-		go readWriteConn(accept, pk)
-	}
-	log.Println("finished to accepting tcp connections")
-}
-
-func readWriteConn(conn net.Conn, pk *rsa.PrivateKey) {
-	bb := make([]byte, 2048)
-	defer conn.Close()
-	for {
-		read, err := conn.Read(bb)
-		if err != nil {
-			if err.Error() != "EOF" {
-				log.Printf("got error while reading data from connection %+v", err)
-			}
-			break
-		}
-		if read > 0 {
-			msg := string(bb[:read])
-			log.Println(">> " + msg)
-			message, err := prepareResponseSignature(msg, pk)
-			if err != nil {
-				log.Printf("got error while preparing signed response %+v", err)
-			}
-			_, err = conn.Write(message)
-			if err != nil {
-				log.Printf("got error while writing signed response %+v", err)
-				break
-			}
-		}
-	}
-}
-
-func handleEpollTcpSocketEvents(ln *net.TCPListener, pk *rsa.PrivateKey) {
-	go func() {
-		err := poller.Polling(epollReadCallback(pk))
-		if err != nil {
-			if err != nil {
-				log.Printf("got error while polling events %+v", err)
-			}
-		}
-	}()
+func handleEpollTcpSocketEvents(ln *net.TCPListener) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
-			log.Printf("got error while eccepting tcp session: %+v", err)
+			log.Info().Msgf("got error while eccepting tcp session: %+v", err)
 			break
 		}
 		fdConn, ok := conn.(dynproxy.FileDesc)
 		if !ok {
-			log.Printf("can't cast net.Conn to FileDesc %+v", conn)
+			log.Info().Msgf("can't cast net.Conn to FileDesc %+v", conn)
 		}
 		file, err := fdConn.File()
 		if err != nil {
-			log.Printf("can't get file from FileDesc %+v", err)
+			log.Info().Msgf("can't get file from FileDesc %+v", err)
 		}
 
 		fd := int(file.Fd())
-		err = poller.AddReadErrors(fd)
-		if err != nil {
-			log.Printf("can't add read fd to epoll %+v", err)
-		}
 		lock.Lock()
 		connections[fd] = conn
 		lock.Unlock()
+		err = eventLoop.PollForReadAndErrors(fd)
+		if err != nil {
+			log.Info().Msgf("can't add read fd to epoll %+v", err)
+		}
 	}
-	log.Println("finished to accepting tcp connections")
+	log.Info().Msg("finished to accepting tcp connections")
 }
 
 func epollReadCallback(pk *rsa.PrivateKey) func(fd int, ev uint32) error {
@@ -173,10 +131,10 @@ func epollReadCallback(pk *rsa.PrivateKey) func(fd int, ev uint32) error {
 					return err
 				}
 			case unix.EPOLLHUP:
-				log.Printf("connection fd:%d is susspended\n", fd)
+				log.Error().Msgf("connection fd:%d is susspended\n", fd)
 				delete(connections, fd)
 			case unix.EPOLLERR:
-				log.Printf("got error for connection fd:%d\n", fd)
+				log.Error().Msgf("got error for connection fd:%d\n", fd)
 				delete(connections, fd)
 			}
 		}
@@ -192,21 +150,22 @@ func handleRequest(fd int, conn net.Conn, bb []byte, pk *rsa.PrivateKey) error {
 			lock.Lock()
 			delete(connections, fd)
 			lock.Unlock()
+
 		} else {
-			log.Printf("got error while reading data from connection %+v", err)
+			log.Error().Msgf("got error while reading data from connection %+v", err)
 			return err
 		}
 	}
 	if read > 0 {
 		msg := string(bb[:read])
-		log.Println(">> " + msg)
+		log.Info().Msgf(">> %s", msg)
 		message, err := prepareResponseSignature(msg, pk)
 		if err != nil {
-			log.Printf("got error while preparing signed response %+v", err)
+			log.Error().Msgf("got error while preparing signed response %+v", err)
 		}
 		_, err = conn.Write(message)
 		if err != nil {
-			log.Printf("got error while writing signed response %+v", err)
+			log.Error().Msgf("got error while writing signed response %+v", err)
 		}
 	}
 	return nil
