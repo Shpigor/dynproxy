@@ -11,10 +11,10 @@ import (
 )
 
 const (
-	readEvents       = unix.EPOLLPRI | unix.EPOLLIN
+	readEvents       = unix.EPOLLPRI | unix.EPOLLIN | unix.EPOLLET
 	writeEvents      = unix.EPOLLOUT
 	readWriteEvents  = readEvents | writeEvents
-	errorEvents      = unix.EPOLLERR | unix.EPOLLHUP
+	errorEvents      = unix.EPOLLERR | unix.EPOLLHUP | unix.EPOLLRDHUP
 	readErrorsEvents = readEvents | errorEvents
 )
 
@@ -39,8 +39,7 @@ func (p *Poller) close() {
 	}
 }
 
-func (p *Poller) waitForEvents(callback func(fd int, events uint32) error) (int, error) {
-	//evCount, err := unix.EpollWait(p.fd, p.events, p.timeout)
+func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (int, error) {
 	evCount, err := epollWait(p.fd, p.events, p.timeout)
 	if evCount == 0 || (evCount < 0 && err == unix.EINTR) {
 		p.timeout = blocked
@@ -52,9 +51,20 @@ func (p *Poller) waitForEvents(callback func(fd int, events uint32) error) (int,
 	for i := 0; i < evCount; i++ {
 		event := p.events[i]
 		fd := int(event.Fd)
-		err = callback(fd, event.Events)
+		stream, direction := provider.FindStreamByFd(fd)
+		if errorEvents&event.Events > 0 {
+			err = handler.CloseEvent(stream, direction)
+		} else if readEvents&event.Events > 0 {
+			err = handler.ReadEvent(stream, direction)
+		} else if writeEvents&event.Events > 0 {
+			err = handler.WriteEvent(stream, direction)
+		}
 		if err != nil {
 			log.Error().Msgf("error occurs in event-loop: %v", err)
+			err := p.deletePoll(fd)
+			if err != nil {
+				log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
+			}
 		}
 	}
 	return evCount, nil
@@ -92,7 +102,7 @@ func (p *Poller) addWrite(fd int) error {
 	return nil
 }
 
-func (p *Poller) delete(fd int) error {
+func (p *Poller) deletePoll(fd int) error {
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_DEL, fd, nil)
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl del", err)
@@ -108,16 +118,16 @@ func (p *Poller) addError(fd int) error {
 	return nil
 }
 
-func epollWait(epfd int, events []unix.EpollEvent, msec int) (n int, err error) {
-	var r0 uintptr
-	var _p0 = unsafe.Pointer(&events[0])
+func epollWait(epollFd int, events []unix.EpollEvent, msec int) (count int, err error) {
+	var eventCount uintptr
+	var eventsPointer = unsafe.Pointer(&events[0])
 	if msec == 0 {
-		r0, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), 0, 0, 0)
+		eventCount, _, err = syscall.RawSyscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epollFd), uintptr(eventsPointer), uintptr(len(events)), 0, 0, 0)
 	} else {
-		r0, _, err = syscall.Syscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epfd), uintptr(_p0), uintptr(len(events)), uintptr(msec), 0, 0)
+		eventCount, _, err = syscall.Syscall6(syscall.SYS_EPOLL_PWAIT, uintptr(epollFd), uintptr(eventsPointer), uintptr(len(events)), uintptr(msec), 0, 0)
 	}
 	if err == syscall.Errno(0) {
 		err = nil
 	}
-	return int(r0), err
+	return int(eventCount), err
 }

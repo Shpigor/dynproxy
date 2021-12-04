@@ -8,7 +8,7 @@ import (
 
 type ContextManager struct {
 	ctx          context.Context
-	Pipes        map[string]*pipe
+	Pipes        map[string]*Stream
 	newFrontConn chan *newConn
 	pipeEnd      chan string
 }
@@ -21,7 +21,7 @@ type newConn struct {
 func NewContextManager(ctx context.Context) *ContextManager {
 	cm := &ContextManager{
 		ctx:          ctx,
-		Pipes:        make(map[string]*pipe),
+		Pipes:        make(map[string]*Stream),
 		newFrontConn: make(chan *newConn, 100),
 		pipeEnd:      make(chan string, 100),
 	}
@@ -61,18 +61,18 @@ func (cm *ContextManager) start() {
 				log.Warn().Msgf("can't create any new connections to the backends: %+v", err)
 			} else {
 				id := newConn.frontend.RemoteAddr().String() + "<->" + backendConn.RemoteAddr().String()
-				newPipe := &pipe{
+				newPipe := &Stream{
 					id:       id,
 					frontend: newConn.frontend,
 					backend:  backendConn,
 					finish:   cm.pipeEnd,
 				}
-				log.Debug().Msgf("new pipe: %s", id)
+				log.Debug().Msgf("new stream: %s", id)
 				cm.Pipes[id] = newPipe
 				go newPipe.start()
 			}
 		case id := <-cm.pipeEnd:
-			log.Debug().Msgf("pipe: %s closed", id)
+			log.Debug().Msgf("stream: %s closed", id)
 			delete(cm.Pipes, id)
 		}
 	}

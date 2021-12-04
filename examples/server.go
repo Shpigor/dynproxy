@@ -33,9 +33,74 @@ func init() {
 	zerolog.SetGlobalLevel(zerolog.DebugLevel)
 }
 
+type server struct {
+	pk      *rsa.PrivateKey
+	address *net.TCPAddr
+	lock    *sync.RWMutex
+	wg      *sync.WaitGroup
+	bb      []byte
+	streams map[int]*dynproxy.Stream
+}
+
+func (s *server) ReadEvent(stream *dynproxy.Stream, direction int) error {
+	conn := stream.GetConnByDirection(direction)
+	read, err := conn.Read(s.bb)
+	if err != nil {
+		if err.Error() == "EOF" {
+			stream.Close(direction)
+
+			lock.Lock()
+			delete(connections, fd)
+			lock.Unlock()
+		} else {
+			log.Error().Msgf("got error while reading data from connection %+v", err)
+			return err
+		}
+	}
+	if read > 0 {
+		msg := string(s.bb[:read])
+		log.Info().Msgf(">> %s", msg)
+		message, err := prepareResponseSignature(msg, s.pk)
+		if err != nil {
+			log.Error().Msgf("got error while preparing signed response %+v", err)
+		}
+		_, err = conn.Write(message)
+		if err != nil {
+			log.Error().Msgf("got error while writing signed response %+v", err)
+		}
+	}
+	return nil
+}
+
+func (s *server) WriteEvent(stream *dynproxy.Stream, direction int) error {
+	return nil
+}
+
+func (s *server) CloseEvent(stream *dynproxy.Stream, direction int) error {
+	err := stream.Close(direction)
+	if err != nil {
+		log.Error().Msgf("got error while remove epoll: %+v", err)
+		return err
+	}
+	return nil
+}
+
+func (s *server) FindStreamByFd(fd int) (*dynproxy.Stream, int) {
+	lock.RLock()
+	stream := s.streams[fd]
+	lock.RUnlock()
+	return stream, 0
+}
+
+func (s *server) AddStream(fd int, stream *dynproxy.Stream) {
+	lock.Lock()
+	s.streams[fd] = stream
+	lock.Unlock()
+}
+
 func main() {
-	group := &sync.WaitGroup{}
-	group.Add(1)
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
 	address := &net.TCPAddr{
 		IP:   net.ParseIP(serverIp),
 		Port: serverPort,
@@ -43,6 +108,14 @@ func main() {
 	pk, err := parsePk(privateKeyPath)
 	if err != nil {
 		log.Fatal().Msgf("can't read private key: %+v", err)
+	}
+	srv := server{
+		address: address,
+		pk:      pk,
+		lock:    &sync.RWMutex{},
+		wg:      wg,
+		bb:      make([]byte, 2048),
+		streams: make(map[int]*dynproxy.Stream),
 	}
 	eventLoop, err = dynproxy.NewEventLoop(dynproxy.EventLoopConfig{
 		Name:            "MainLoop",
@@ -52,10 +125,19 @@ func main() {
 	if err != nil {
 		log.Fatal().Msgf("can't create event loop: %+v", err)
 	}
-	connections = make(map[int]net.Conn)
-	go eventLoop.Start(epollReadCallback(pk))
-	tcpServer(group, pk, address)
-	group.Wait()
+
+	go eventLoop.Start(&srv, &srv)
+	srv.listenTcp()
+	wg.Wait()
+}
+
+func (s *server) listenTcp() {
+	tcp, err := net.ListenTCP("tcp", s.address)
+	if err != nil {
+		s.wg.Done()
+		log.Fatal().Msgf("got error while listening socket: %+v", err)
+	}
+	go handleAcceptConnection(tcp)
 }
 
 func parsePk(path string) (*rsa.PrivateKey, error) {
@@ -76,16 +158,7 @@ func parsePk(path string) (*rsa.PrivateKey, error) {
 	return parsedKey, nil
 }
 
-func tcpServer(group *sync.WaitGroup, pk *rsa.PrivateKey, address *net.TCPAddr) {
-	tcp, err := net.ListenTCP("tcp", address)
-	if err != nil {
-		group.Done()
-		log.Fatal().Msgf("got error while listening socket: %+v", err)
-	}
-	go handleEpollTcpSocketEvents(tcp)
-}
-
-func handleEpollTcpSocketEvents(ln *net.TCPListener) {
+func handleAcceptConnection(ln *net.TCPListener) {
 	for {
 		conn, err := ln.Accept()
 		if err != nil {
@@ -102,9 +175,7 @@ func handleEpollTcpSocketEvents(ln *net.TCPListener) {
 		}
 
 		fd := int(file.Fd())
-		lock.Lock()
-		connections[fd] = conn
-		lock.Unlock()
+		saveConnWithFd(fd, conn)
 		err = eventLoop.PollForReadAndErrors(fd)
 		if err != nil {
 			log.Info().Msgf("can't add read fd to epoll %+v", err)
@@ -116,9 +187,7 @@ func handleEpollTcpSocketEvents(ln *net.TCPListener) {
 func epollReadCallback(pk *rsa.PrivateKey) func(fd int, ev uint32) error {
 	bb := make([]byte, 2048)
 	return func(fd int, ev uint32) error {
-		lock.RLock()
-		conn, ok := connections[fd]
-		lock.RUnlock()
+		conn, ok := getConnByFd(fd)
 		if ok {
 			switch ev {
 			case unix.EPOLLIN:
@@ -132,11 +201,13 @@ func epollReadCallback(pk *rsa.PrivateKey) func(fd int, ev uint32) error {
 				}
 			case unix.EPOLLHUP:
 				log.Error().Msgf("connection fd:%d is susspended\n", fd)
-				delete(connections, fd)
+				removeConnByFd(fd)
 			case unix.EPOLLERR:
 				log.Error().Msgf("got error for connection fd:%d\n", fd)
-				delete(connections, fd)
+				removeConnByFd(fd)
 			}
+		} else {
+			removeConnByFd(fd)
 		}
 		return nil
 	}
@@ -150,7 +221,6 @@ func handleRequest(fd int, conn net.Conn, bb []byte, pk *rsa.PrivateKey) error {
 			lock.Lock()
 			delete(connections, fd)
 			lock.Unlock()
-
 		} else {
 			log.Error().Msgf("got error while reading data from connection %+v", err)
 			return err
@@ -182,4 +252,27 @@ func prepareResponseSignature(message string, pk *rsa.PrivateKey) ([]byte, error
 	msgHashSum := msgHash.Sum(nil)
 
 	return rsa.SignPSS(rand.Reader, pk, crypto.SHA256, msgHashSum, nil)
+}
+
+func getConnByFd(fd int) (net.Conn, bool) {
+	lock.RLock()
+	conn, ok := connections[fd]
+	lock.RUnlock()
+	return conn, ok
+}
+
+func removeConnByFd(fd int) {
+	lock.RLock()
+	delete(connections, fd)
+	lock.RUnlock()
+	err := eventLoop.DeletePoll(fd)
+	if err != nil {
+		log.Error().Msgf("got error while remove epoll: %+v", err)
+	}
+}
+
+func saveConnWithFd(fd int, conn net.Conn) {
+	lock.Lock()
+	connections[fd] = conn
+	lock.Unlock()
 }

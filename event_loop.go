@@ -41,19 +41,16 @@ func NewEventLoop(config EventLoopConfig) (*EventLoop, error) {
 	return eLoop, nil
 }
 
-func (el *EventLoop) Start(callback func(fd int, events uint32) error) {
+func (el *EventLoop) Start(handler EventHandler, provider StreamProvider) {
 	if el.lockOsThread {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
 	el.isRunning.Store(true)
 	for el.isRunning.Load() {
-		evCount, err := el.poller.waitForEvents(callback)
+		_, err := el.poller.waitForEvents(handler, provider)
 		if err != nil {
 			log.Error().Msgf("got error while waiting for the net events: %+v", err)
-		}
-		if log.Debug().Enabled() {
-			log.Debug().Msgf("processed %d netpoll events", evCount)
 		}
 	}
 	defer el.poller.close()
@@ -68,7 +65,7 @@ func (el *EventLoop) PollForRead(fd int) error {
 }
 
 func (el *EventLoop) DeletePoll(fd int) error {
-	return el.poller.delete(fd)
+	return el.poller.deletePoll(fd)
 }
 
 func (el *EventLoop) PollForReadAndErrors(fd int) error {
