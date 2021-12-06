@@ -5,11 +5,13 @@ type EventHandler interface {
 	ReadEvent(stream *Stream, direction int) error
 	// WriteEvent Handle write events received from polling
 	WriteEvent(stream *Stream, direction int) error
-	// CloseEvent Handle error events received from polling
-	CloseEvent(stream *Stream, direction int) error
+	// ErrorEvent Handle error events received from polling
+	ErrorEvent(stream *Stream, direction int, errors []error) error
 }
 
 type StreamProvider interface {
 	FindStreamByFd(fd int) (*Stream, int)
 	AddStream(fd int, p *Stream)
+	RemoveByFd(fd int)
+	RemoveStream(stream *Stream)
 }

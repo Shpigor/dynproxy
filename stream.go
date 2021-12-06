@@ -5,8 +5,28 @@ import (
 	"net"
 )
 
+type Direction int8
+
+const (
+	From = Direction(0)
+	To   = Direction(1)
+)
+
+type StreamI interface {
+}
+
+func NewStream(fd int, conn net.Conn) *Stream {
+	return &Stream{
+		id:       conn.RemoteAddr().String(),
+		frontFd:  fd,
+		frontend: conn,
+	}
+}
+
 type Stream struct {
 	id       string
+	srvFd    int
+	frontFd  int
 	backend  net.Conn
 	frontend net.Conn
 	finish   chan string
@@ -80,7 +100,13 @@ func (s *Stream) GetConnByDirection(direction int) net.Conn {
 }
 
 func (s *Stream) Close(direction int) error {
-	s.frontend.Close()
-	s.backend.Close()
-	return nil
+	err := s.frontend.Close()
+	if s.backend != nil {
+		err = s.backend.Close()
+	}
+	return err
+}
+
+func (s *Stream) GetFd() int {
+	return s.frontFd
 }

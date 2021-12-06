@@ -53,7 +53,7 @@ func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (i
 		fd := int(event.Fd)
 		stream, direction := provider.FindStreamByFd(fd)
 		if errorEvents&event.Events > 0 {
-			err = handler.CloseEvent(stream, direction)
+			err = handler.ErrorEvent(stream, direction, parseErrors(event.Events))
 		} else if readEvents&event.Events > 0 {
 			err = handler.ReadEvent(stream, direction)
 		} else if writeEvents&event.Events > 0 {
@@ -68,6 +68,13 @@ func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (i
 		}
 	}
 	return evCount, nil
+}
+
+func parseErrors(events uint32) []error {
+	if errorEvents&events > 0 {
+
+	}
+	return nil
 }
 
 func (p *Poller) addReadErrors(fd int) error {
