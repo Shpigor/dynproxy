@@ -16,11 +16,6 @@ type Balancer struct {
 	updateChannel chan status
 }
 
-type status struct {
-	Name   string
-	Status int
-}
-
 func InitBalancers(ctx context.Context, config Config) {
 	balancers = make(map[string]*Balancer)
 	for _, balancerConfig := range config.Backends {

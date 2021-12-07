@@ -52,15 +52,26 @@ func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (i
 		event := p.events[i]
 		fd := int(event.Fd)
 		stream, direction := provider.FindStreamByFd(fd)
-		if errorEvents&event.Events > 0 {
-			err = handler.ErrorEvent(stream, direction, parseErrors(event.Events))
-		} else if readEvents&event.Events > 0 {
+		if stream == nil {
+			log.Error().Msgf("stream is nil for fd: %d", fd)
+			log.Debug().Msgf("streams: %+v", provider)
+		}
+		if readEvents&event.Events > 0 {
 			err = handler.ReadEvent(stream, direction)
-		} else if writeEvents&event.Events > 0 {
-			err = handler.WriteEvent(stream, direction)
+		}
+		if errorEvents&event.Events > 0 {
+			err = handler.ErrorEvent(stream, parseErrors(event.Events))
+		}
+		if writeEvents&event.Events > 0 {
+			log.Warn().Msgf(">>> !!!Unhandled events: %v", event)
 		}
 		if err != nil {
-			log.Error().Msgf("error occurs in event-loop: %v", err)
+			if err != closedStream {
+				log.Error().Msgf("error occurs in event-loop: %v", err)
+			}
+			if stream != nil {
+				provider.RemoveStream(stream)
+			}
 			err := p.deletePoll(fd)
 			if err != nil {
 				log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
@@ -78,6 +89,9 @@ func parseErrors(events uint32) []error {
 }
 
 func (p *Poller) addReadErrors(fd int) error {
+	if log.Debug().Enabled() {
+		log.Debug().Msgf("add read|errors epoll for fd: %d", fd)
+	}
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readErrorsEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl add", err)
@@ -86,6 +100,9 @@ func (p *Poller) addReadErrors(fd int) error {
 }
 
 func (p *Poller) addReadWrite(fd int) error {
+	if log.Debug().Enabled() {
+		log.Debug().Msgf("add read|write epoll for fd: %d", fd)
+	}
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readWriteEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl add", err)
@@ -94,6 +111,9 @@ func (p *Poller) addReadWrite(fd int) error {
 }
 
 func (p *Poller) addRead(fd int) error {
+	if log.Debug().Enabled() {
+		log.Debug().Msgf("add read epoll for fd: %d", fd)
+	}
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: readEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl add", err)
@@ -102,6 +122,9 @@ func (p *Poller) addRead(fd int) error {
 }
 
 func (p *Poller) addWrite(fd int) error {
+	if log.Debug().Enabled() {
+		log.Debug().Msgf("add write epoll for fd: %d", fd)
+	}
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: writeEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl add", err)
@@ -110,6 +133,9 @@ func (p *Poller) addWrite(fd int) error {
 }
 
 func (p *Poller) deletePoll(fd int) error {
+	if log.Debug().Enabled() {
+		log.Debug().Msgf("delete epoll for fd: %d", fd)
+	}
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_DEL, fd, nil)
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl del", err)
@@ -118,6 +144,9 @@ func (p *Poller) deletePoll(fd int) error {
 }
 
 func (p *Poller) addError(fd int) error {
+	if log.Debug().Enabled() {
+		log.Debug().Msgf("add error epoll for fd: %d", fd)
+	}
 	err := unix.EpollCtl(p.fd, unix.EPOLL_CTL_ADD, fd, &unix.EpollEvent{Fd: int32(fd), Events: errorEvents})
 	if err != nil {
 		return os.NewSyscallError("epoll_ctl del", err)

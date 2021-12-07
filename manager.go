@@ -3,29 +3,36 @@ package dynproxy
 import (
 	"context"
 	"github.com/rs/zerolog/log"
-	"net"
 )
 
 type ContextManager struct {
 	ctx          context.Context
-	Pipes        map[string]*Stream
+	streams      StreamProvider
+	handler      EventHandler
 	newFrontConn chan *newConn
-	pipeEnd      chan string
-}
-
-type newConn struct {
-	frontend net.Conn
-	backend  string
+	events       chan Event
+	eventLoops   *EventLoop
 }
 
 func NewContextManager(ctx context.Context) *ContextManager {
+	eventLoop, err := NewEventLoop(EventLoopConfig{
+		Name:            "MainLoop",
+		EventBufferSize: 256,
+		LockOsThread:    true,
+	})
+	if err != nil {
+		log.Fatal().Msgf("can't init event loop: %+v", err)
+	}
 	cm := &ContextManager{
 		ctx:          ctx,
-		Pipes:        make(map[string]*Stream),
-		newFrontConn: make(chan *newConn, 100),
-		pipeEnd:      make(chan string, 100),
+		streams:      NewMapStreamProvider(),
+		handler:      NewBufferHandler(),
+		newFrontConn: make(chan *newConn, 256),
+		events:       make(chan Event, 128),
+		eventLoops:   eventLoop,
 	}
 	go cm.start()
+	go eventLoop.Start(cm.handler, cm.streams)
 	return cm
 }
 
@@ -46,7 +53,10 @@ func (cm *ContextManager) InitFrontends(config Config) {
 				CertPath:   frConfig.TlsCertPath,
 				PkPath:     frConfig.TlsPkPath},
 		}
-		frontend.Listen()
+		err := frontend.Listen()
+		if err != nil {
+			log.Error().Msgf("error occurred when listening frontend socket:%+v", err)
+		}
 	}
 }
 
@@ -60,20 +70,21 @@ func (cm *ContextManager) start() {
 			if err != nil {
 				log.Warn().Msgf("can't create any new connections to the backends: %+v", err)
 			} else {
-				id := newConn.frontend.RemoteAddr().String() + "<->" + backendConn.RemoteAddr().String()
-				newPipe := &Stream{
-					id:       id,
-					frontend: newConn.frontend,
-					backend:  backendConn,
-					finish:   cm.pipeEnd,
+				stream, err := NewDefaultProxyStream(newConn.frontend, backendConn, cm.events)
+				if err != nil {
+					log.Debug().Msgf("new stream: %s", stream)
+					continue
 				}
-				log.Debug().Msgf("new stream: %s", id)
-				cm.Pipes[id] = newPipe
-				go newPipe.start()
+				cm.streams.AddStream(stream)
+				for _, fd := range stream.GetFds() {
+					err = cm.eventLoops.PollForReadAndErrors(fd)
+					if err != nil {
+						log.Error().Msgf("got error while attach read netpoll: %+v", err)
+					}
+				}
 			}
-		case id := <-cm.pipeEnd:
-			log.Debug().Msgf("stream: %s closed", id)
-			delete(cm.Pipes, id)
+		case event := <-cm.events:
+			log.Debug().Msgf("received stream event: %+v", event)
 		}
 	}
 }

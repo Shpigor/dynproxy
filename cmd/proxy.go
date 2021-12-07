@@ -26,10 +26,10 @@ func init() {
 }
 
 func initLog(config dynproxy.Config) {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
 	if &config.Global != nil {
 		// TODO: parse log level
-		zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 }
 
