@@ -48,50 +48,43 @@ func (h *bufferHandler) ErrorEvent(stream Stream, errors []error) error {
 
 func NewMapStreamProvider() StreamProvider {
 	return &mapStreamProvider{
-		lock:     &sync.RWMutex{},
-		fromConn: make(map[int]Stream),
-		toConn:   make(map[int]Stream),
+		lock:    &sync.RWMutex{},
+		streams: make(map[int]Stream),
 	}
 }
 
 type mapStreamProvider struct {
-	lock     *sync.RWMutex
-	fromConn map[int]Stream
-	toConn   map[int]Stream
+	lock    *sync.RWMutex
+	streams map[int]Stream
 }
 
 func (sp *mapStreamProvider) FindStreamByFd(fd int) (Stream, Direction) {
 	sp.lock.RLock()
 	defer sp.lock.RUnlock()
-	stream, ok := sp.fromConn[fd]
-	if !ok {
-		return sp.toConn[fd], To
+	stream, ok := sp.streams[fd]
+	if ok {
+		if fd == stream.GetFd(From) {
+			return stream, From
+		}
+		return stream, To
 	}
-	return stream, From
+	return nil, 0
 }
 
 func (sp *mapStreamProvider) AddStream(stream Stream) {
 	sp.lock.Lock()
 	defer sp.lock.Unlock()
-	fd := stream.GetFd(From)
-	if fd != -1 {
-		sp.fromConn[fd] = stream
-	}
-	fd = stream.GetFd(To)
-	if fd != -1 {
-		sp.toConn[fd] = stream
+	fds := stream.GetFds()
+	for _, fd := range fds {
+		sp.streams[fd] = stream
 	}
 }
 
 func (sp *mapStreamProvider) RemoveStream(stream Stream) {
 	sp.lock.Lock()
 	defer sp.lock.Unlock()
-	fd := stream.GetFd(From)
-	if fd != -1 {
-		delete(sp.fromConn, fd)
-	}
-	fd = stream.GetFd(To)
-	if fd != -1 {
-		delete(sp.toConn, fd)
+	fds := stream.GetFds()
+	for _, fd := range fds {
+		delete(sp.streams, fd)
 	}
 }

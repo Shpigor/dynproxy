@@ -52,7 +52,7 @@ func (b *Backend) runHealthCheck() {
 			ticker.Stop()
 			return
 		case <-ticker.C:
-			b.checkConnection()
+			//b.checkConnection()
 		}
 	}
 }

@@ -107,13 +107,13 @@ func parseCertFile(filename string) (*x509.Certificate, error) {
 }
 
 func processConnection(msg string, conn net.Conn) {
+	<-time.NewTimer(time.Duration(1) * time.Second).C
 	buffer := make([]byte, 1024)
 	message := []byte(msg)
 	_, err := conn.Write(message)
 	if err != nil {
 		log.Fatalf("got error while writing to tcp server: %+v", err)
 	}
-	_ = conn.SetReadDeadline(time.Now().Add(time.Duration(2) * time.Second))
 	read, err := conn.Read(buffer)
 	if err != nil {
 		log.Printf("got error while reading data from server: %+v", err)
@@ -123,7 +123,6 @@ func processConnection(msg string, conn net.Conn) {
 		if err != nil {
 			log.Printf("got timeout while verifying message signature:%+v", err)
 		}
-		return
 	}
 	defer conn.Close()
 }

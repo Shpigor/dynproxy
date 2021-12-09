@@ -42,12 +42,12 @@ func NewProxyStream(frontConn net.Conn, srvConn net.Conn, eventChan chan Event, 
 func (s *proxyStream) ProcessRead(dir Direction, buffer []byte) error {
 	if dir == From {
 		if log.Debug().Enabled() {
-			log.Debug().Msgf("[%d] read event from stream: %s", s.frontFd, s.id)
+			log.Debug().Msgf("[%d] read event from stream: %s", s.frontFd, s.frontend.RemoteAddr().String())
 		}
 		return s.handler(s.frontend, s.backend, buffer)
 	} else {
 		if log.Debug().Enabled() {
-			log.Debug().Msgf("[%d] read event to stream: %s", s.srvFd, s.id)
+			log.Debug().Msgf("[%d] read event to stream: %s", s.srvFd, s.backend.RemoteAddr().String())
 		}
 		return s.handler(s.backend, s.frontend, buffer)
 	}

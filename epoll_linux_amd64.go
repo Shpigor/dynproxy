@@ -16,6 +16,7 @@ const (
 	readWriteEvents  = readEvents | writeEvents
 	errorEvents      = unix.EPOLLERR | unix.EPOLLHUP | unix.EPOLLRDHUP
 	readErrorsEvents = readEvents | errorEvents
+	allEvents        = readEvents | errorEvents | writeEvents
 )
 
 func openPoller(eventsBufferSize int) (*Poller, error) {
@@ -42,7 +43,6 @@ func (p *Poller) close() {
 func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (int, error) {
 	evCount, err := epollWait(p.fd, p.events, p.timeout)
 	if evCount == 0 || (evCount < 0 && err == unix.EINTR) {
-		p.timeout = blocked
 		runtime.Gosched()
 	} else if err != nil {
 		log.Printf("error occurs in epoll: %v", os.NewSyscallError("epoll_wait", err))
@@ -51,11 +51,9 @@ func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (i
 	for i := 0; i < evCount; i++ {
 		event := p.events[i]
 		fd := int(event.Fd)
+		log.Debug().Msgf("Event fd:%d", event)
 		stream, direction := provider.FindStreamByFd(fd)
-		if stream == nil {
-			log.Error().Msgf("stream is nil for fd: %d", fd)
-			log.Debug().Msgf("streams: %+v", provider)
-		}
+		//if readEvents&event.Events > 0 || writeEvents&event.Events > 0 {
 		if readEvents&event.Events > 0 {
 			err = handler.ReadEvent(stream, direction)
 		}
@@ -63,19 +61,20 @@ func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (i
 			err = handler.ErrorEvent(stream, parseErrors(event.Events))
 		}
 		if writeEvents&event.Events > 0 {
-			log.Warn().Msgf(">>> !!!Unhandled events: %v", event)
+			log.Warn().Msgf(">>>[%d] !!!Unhandled events: %v", fd, event)
 		}
 		if err != nil {
 			if err != closedStream {
 				log.Error().Msgf("error occurs in event-loop: %v", err)
 			}
-			if stream != nil {
-				provider.RemoveStream(stream)
+			fds := stream.GetFds()
+			for _, fd := range fds {
+				err := p.deletePoll(fd)
+				if err != nil {
+					log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
+				}
 			}
-			err := p.deletePoll(fd)
-			if err != nil {
-				log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
-			}
+			provider.RemoveStream(stream)
 		}
 	}
 	return evCount, nil

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"net"
 	"syscall"
@@ -93,6 +94,10 @@ func configureSocket(fd FileDesc) {
 		log.Error().Msgf("error in getting file for the connection:%+v", err)
 	}
 	f := int(file.Fd())
+	err = unix.SetNonblock(f, true)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options O_NONBLOCK: %+v", err)
+	}
 	err = syscall.SetsockoptInt(f, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 8192)
 	if err != nil {
 		log.Error().Msgf("got error while setting socket options SO_RCVBUF: %+v", err)
