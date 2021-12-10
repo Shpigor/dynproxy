@@ -40,7 +40,7 @@ func (p *Poller) close() {
 	}
 }
 
-func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (int, error) {
+func (p *Poller) waitForEvents(handler NetEventHandler, provider SessionHolder) (int, error) {
 	evCount, err := epollWait(p.fd, p.events, p.timeout)
 	if evCount == 0 || (evCount < 0 && err == unix.EINTR) {
 		runtime.Gosched()
@@ -52,19 +52,22 @@ func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (i
 		event := p.events[i]
 		fd := int(event.Fd)
 		log.Debug().Msgf("Event fd:%d", event)
-		stream, direction := provider.FindStreamByFd(fd)
-		//if readEvents&event.Events > 0 || writeEvents&event.Events > 0 {
+		stream, err := provider.FindSessionByFd(fd)
+		if err != nil {
+			err := p.deletePoll(fd)
+			if err != nil {
+				log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
+			}
+			continue
+		}
 		if readEvents&event.Events > 0 {
-			err = handler.ReadEvent(stream, direction)
+			err = handler.ReadEvent(stream, fd)
 		}
 		if errorEvents&event.Events > 0 {
 			err = handler.ErrorEvent(stream, parseErrors(event.Events))
 		}
-		if writeEvents&event.Events > 0 {
-			log.Warn().Msgf(">>>[%d] !!!Unhandled events: %v", fd, event)
-		}
 		if err != nil {
-			if err != closedStream {
+			if err != closedSession {
 				log.Error().Msgf("error occurs in event-loop: %v", err)
 			}
 			fds := stream.GetFds()
@@ -74,7 +77,7 @@ func (p *Poller) waitForEvents(handler EventHandler, provider StreamProvider) (i
 					log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
 				}
 			}
-			provider.RemoveStream(stream)
+			provider.RemoveSession(stream)
 		}
 	}
 	return evCount, nil

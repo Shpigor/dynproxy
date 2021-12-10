@@ -60,7 +60,6 @@ func (o *OCSPProcessor) sendOcspRequest(request []byte) ([]byte, error) {
 				}
 			}
 		}
-
 	}(rsp)
 	if err != nil {
 		return nil, err

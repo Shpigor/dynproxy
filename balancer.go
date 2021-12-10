@@ -3,7 +3,6 @@ package dynproxy
 import (
 	"context"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sys/unix"
 	"net"
 )
 
@@ -62,14 +61,11 @@ func (b *Balancer) getNextBackendConn() (net.Conn, error) {
 	if len(b.Backends) > 0 {
 		backend := b.Backends[0]
 		conn, err := backend.getBackendConn()
-		if err == nil {
-			fd, err := ConnToFileDesc(conn)
-			if err != nil {
-
-			}
-			unix.SetNonblock(int(fd), true)
+		if err != nil {
+			return nil, nil
 		}
-		return conn, err
+		setSocketOptions(conn)
+		return conn, nil
 	}
 	return nil, noActiveBackends
 }

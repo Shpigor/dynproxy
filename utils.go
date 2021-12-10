@@ -9,9 +9,18 @@ import (
 	"unsafe"
 )
 
+const (
+	UNKNOWN ConnType = iota
+	TCP
+	TLS
+	UDP
+)
+
 type FileDesc interface {
 	File() (f *os.File, err error)
 }
+
+type ConnType int
 
 func tlsConnToFileDesc(tlsConn *tls.Conn) FileDesc {
 	// XXX: This is really BAD!!! Only way currently to get the underlying
@@ -22,14 +31,14 @@ func tlsConnToFileDesc(tlsConn *tls.Conn) FileDesc {
 	return conn.Interface().(FileDesc)
 }
 
-func ConnToFileDesc(conn net.Conn) (uintptr, error) {
+func ConnToFileDesc(conn net.Conn) (int, ConnType, error) {
 	tcpConn, ok := conn.(*net.TCPConn)
 	if ok {
 		file, err := tcpConn.File()
 		if err != nil {
-			return 0, err
+			return 0, TCP, err
 		}
-		return file.Fd(), nil
+		return int(file.Fd()), TCP, nil
 	} else {
 		tls, ok := conn.(*tls.Conn)
 		if ok {
@@ -38,10 +47,10 @@ func ConnToFileDesc(conn net.Conn) (uintptr, error) {
 			fileDesc := conn.Interface().(FileDesc)
 			file, err := fileDesc.File()
 			if err != nil {
-				return 0, err
+				return 0, TLS, err
 			}
-			return file.Fd(), nil
+			return int(file.Fd()), TLS, nil
 		}
 	}
-	return 0, errors.New("can't cast net.Conn to *net.TCPConn")
+	return 0, UNKNOWN, errors.New("can't cast net.Conn to *net.TCPConn")
 }

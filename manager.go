@@ -6,12 +6,12 @@ import (
 )
 
 type ContextManager struct {
-	ctx          context.Context
-	streams      StreamProvider
-	handler      EventHandler
-	newFrontConn chan *newConn
-	events       chan Event
-	eventLoops   *EventLoop
+	ctx           context.Context
+	sessionHolder SessionHolder
+	handler       NetEventHandler
+	newFrontConn  chan *newConn
+	events        chan Event
+	eventLoops    *EventLoop
 }
 
 func NewContextManager(ctx context.Context) *ContextManager {
@@ -24,15 +24,15 @@ func NewContextManager(ctx context.Context) *ContextManager {
 		log.Fatal().Msgf("can't init event loop: %+v", err)
 	}
 	cm := &ContextManager{
-		ctx:          ctx,
-		streams:      NewMapStreamProvider(),
-		handler:      NewBufferHandler(),
-		newFrontConn: make(chan *newConn, 256),
-		events:       make(chan Event, 128),
-		eventLoops:   eventLoop,
+		ctx:           ctx,
+		sessionHolder: NewMapStreamProvider(),
+		handler:       NewBufferHandler(),
+		newFrontConn:  make(chan *newConn, 256),
+		events:        make(chan Event, 128),
+		eventLoops:    eventLoop,
 	}
 	go cm.start()
-	go eventLoop.Start(cm.handler, cm.streams)
+	go eventLoop.Start(cm.handler, cm.sessionHolder)
 	return cm
 }
 
@@ -70,18 +70,17 @@ func (cm *ContextManager) start() {
 			if err != nil {
 				log.Warn().Msgf("can't create any new connections to the backends: %+v", err)
 			} else {
-				stream, err := NewDefaultProxyStream(newConn.frontend, backendConn, cm.events)
+				session, err := NewDefaultProxySession(newConn.frontend, backendConn, cm.events)
 				if err != nil {
-					log.Debug().Msgf("new stream: %s", stream)
+					log.Debug().Msgf("new session: %s", session)
 					continue
 				}
-				cm.streams.AddStream(stream)
-				for _, fd := range stream.GetFds() {
-					err = cm.eventLoops.PollForReadAndErrors(fd)
-					if err != nil {
-						log.Error().Msgf("got error while attach read netpoll: %+v", err)
-					}
+				cm.sessionHolder.AddSession(session)
+				err = cm.eventLoops.PollForReadAndErrors(session.GetFds()...)
+				if err != nil {
+					log.Error().Msgf("got error while attach read netpoll: %+v", err)
 				}
+				session.Init(cm.handler.GetBuffer())
 			}
 		case event := <-cm.events:
 			log.Debug().Msgf("received stream event: %+v", event)

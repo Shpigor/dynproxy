@@ -5,7 +5,7 @@ import (
 	"net"
 )
 
-type clientStream struct {
+type clientSession struct {
 	id        string
 	fd        int
 	conn      net.Conn
@@ -13,53 +13,44 @@ type clientStream struct {
 	handler   func(src, dst net.Conn, data []byte) error
 }
 
-func NewEchoClientStream(conn net.Conn, eventChan chan Event) (Stream, error) {
-	return NewClientStream(conn, eventChan, echo)
+func NewEchoClientSession(conn net.Conn, eventChan chan Event) (Session, error) {
+	return NewClientSession(conn, eventChan, echo)
 }
 
-func NewClientStream(conn net.Conn, eventChan chan Event, handler func(src, dst net.Conn, data []byte) error) (Stream, error) {
-	fd, err := ConnToFileDesc(conn)
+func NewClientSession(conn net.Conn, eventChan chan Event, handler func(src, dst net.Conn, data []byte) error) (Session, error) {
+	fd, _, err := ConnToFileDesc(conn)
 	if err != nil {
 		return nil, err
 	}
-	return &clientStream{
+	return &clientSession{
 		id:        generateId(conn, conn),
-		fd:        int(fd),
+		fd:        fd,
 		conn:      conn,
 		eventChan: eventChan,
 		handler:   handler,
 	}, nil
 }
+func (s *clientSession) Init(buffer []byte) error {
+	return s.ProcessRead(s.fd, buffer)
+}
 
-func (s *clientStream) ProcessRead(dir Direction, buffer []byte) error {
+func (s *clientSession) ProcessRead(fd int, buffer []byte) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("[%d] read event from stream: %s", s.fd, s.id)
 	}
 	return s.handler(s.conn, s.conn, buffer)
 }
 
-func (s *clientStream) GetConnByDirection(dir Direction) net.Conn {
+func (s *clientSession) GetConnByFd(fd int) net.Conn {
 	return s.conn
 }
 
-func (s *clientStream) Close() error {
+func (s *clientSession) Close() error {
 	return s.conn.Close()
 }
 
-func (s *clientStream) GetFd(dir Direction) int {
-	if dir == From {
-		return s.fd
-	}
-	return -1
-}
-
-func (s *clientStream) GetFds() []int {
+func (s *clientSession) GetFds() []int {
 	return []int{s.fd}
-}
-
-func (s *clientStream) Init() error {
-	//s.
-	return nil
 }
 
 func echo(src, dst net.Conn, buffer []byte) error {

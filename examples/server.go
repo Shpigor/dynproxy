@@ -34,8 +34,8 @@ type server struct {
 	pk        *rsa.PrivateKey
 	address   *net.TCPAddr
 	wg        *sync.WaitGroup
-	streams   dynproxy.StreamProvider
-	handler   dynproxy.EventHandler
+	streams   dynproxy.SessionHolder
+	handler   dynproxy.NetEventHandler
 	eventChan chan dynproxy.Event
 }
 
@@ -106,13 +106,13 @@ func (s *server) handleAcceptConnection(ln *net.TCPListener) {
 			log.Info().Msgf("got error while eccepting tcp session: %+v", err)
 			break
 		}
-		stream, err := dynproxy.NewClientStream(conn, s.eventChan, s.handleRead)
+		session, err := dynproxy.NewClientSession(conn, s.eventChan, s.handleRead)
 		if err != nil {
-			log.Error().Msgf("can't create new client stream %+v", err)
+			log.Error().Msgf("can't create new client session %+v", err)
 			continue
 		}
-		s.streams.AddStream(stream)
-		err = eventLoop.PollForReadAndErrors(stream.GetFd(dynproxy.From))
+		s.streams.AddSession(session)
+		err = eventLoop.PollForReadAndErrors(session.GetFds()...)
 		if err != nil {
 			log.Info().Msgf("can't add read fd to epoll %+v", err)
 		}

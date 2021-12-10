@@ -18,6 +18,8 @@ type EventLoop struct {
 	eventBufferSize int
 	isRunning       *atomic.Bool
 	poller          *Poller
+	eventChan       chan Event
+	sessionHolder   SessionHolder
 }
 
 func NewEventLoop(config EventLoopConfig) (*EventLoop, error) {
@@ -41,14 +43,14 @@ func NewEventLoop(config EventLoopConfig) (*EventLoop, error) {
 	return eLoop, nil
 }
 
-func (el *EventLoop) Start(handler EventHandler, provider StreamProvider) {
+func (el *EventLoop) Start(handler NetEventHandler, holder SessionHolder) {
 	if el.lockOsThread {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
 	}
 	el.isRunning.Store(true)
 	for el.isRunning.Load() {
-		_, err := el.poller.waitForEvents(handler, provider)
+		_, err := el.poller.waitForEvents(handler, holder)
 		if err != nil {
 			log.Error().Msgf("got error while waiting for the net events: %+v", err)
 		}
@@ -68,6 +70,12 @@ func (el *EventLoop) DeletePoll(fd int) error {
 	return el.poller.deletePoll(fd)
 }
 
-func (el *EventLoop) PollForReadAndErrors(fd int) error {
-	return el.poller.addReadErrors(fd)
+func (el *EventLoop) PollForReadAndErrors(fds ...int) error {
+	for _, fd := range fds {
+		err := el.poller.addReadErrors(fd)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

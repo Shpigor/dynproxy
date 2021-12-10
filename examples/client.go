@@ -13,7 +13,6 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
-	"time"
 )
 
 var useTls bool
@@ -88,7 +87,6 @@ func validateServerCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate)
 	if err != nil {
 		log.Printf("Verifying peer certificate error: %+v", err)
 	}
-	//log.Printf("Verifying peer certificate: %+v", serverCert)
 	peerCert = serverCert
 	return nil
 }
@@ -107,7 +105,6 @@ func parseCertFile(filename string) (*x509.Certificate, error) {
 }
 
 func processConnection(msg string, conn net.Conn) {
-	<-time.NewTimer(time.Duration(1) * time.Second).C
 	buffer := make([]byte, 1024)
 	message := []byte(msg)
 	_, err := conn.Write(message)

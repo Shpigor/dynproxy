@@ -6,12 +6,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
-	"fmt"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sys/unix"
 	"io/ioutil"
 	"net"
-	"syscall"
 )
 
 type Frontend struct {
@@ -44,23 +41,19 @@ func (f *Frontend) Listen() error {
 		listener = f.listenTls(listener)
 		go f.handleTlsAccept(listener)
 	} else {
-		go f.handleAccept(listener)
+		go f.handleTcpAccept(listener)
 	}
 	return nil
 }
-func (f *Frontend) handleAccept(listener net.Listener) {
+func (f *Frontend) handleTcpAccept(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
 			log.Printf("got error while accept connection: %+v", err)
+			continue
 		}
-		tcpConn, ok := conn.(*net.TCPConn)
-		if !ok {
-			fmt.Println("error in casting *net.Conn to *net.TCPConn!")
-		} else {
-			configureSocket(tcpConn)
-			f.handleNewConnection(tcpConn)
-		}
+		setSocketOptions(conn)
+		f.handleNewConnection(conn)
 	}
 }
 
@@ -68,43 +61,22 @@ func (f *Frontend) handleTlsAccept(listener net.Listener) {
 	for {
 		conn, err := listener.Accept()
 		if err != nil {
-			log.Printf("got error while accept connection: %+v", err)
+			log.Error().Msgf("got error while accept connection: %+v", err)
 		}
 		tlsConn, ok := conn.(*tls.Conn)
 		if !ok {
-			fmt.Println("error in casting *net.Conn to *net.TCPConn!")
+			log.Error().Msg("error in casting *net.Conn to *net.TCPConn!")
 		} else {
 			err := tlsConn.Handshake()
 			if err != nil {
-				log.Printf("TLS handshake error: %+v", err)
-				//log.Printf("TLS handshake status:[%+v]", tlsConn)
+				log.Error().Msgf("TLS handshake error: %+v", err)
 				tlsConn.Close()
 				// TODO: notify about client error
 				continue
 			}
-			configureSocket(tlsConnToFileDesc(tlsConn))
+			setSocketOptions(tlsConn)
 			f.handleNewConnection(tlsConn)
 		}
-	}
-}
-
-func configureSocket(fd FileDesc) {
-	file, err := fd.File()
-	if err != nil {
-		log.Error().Msgf("error in getting file for the connection:%+v", err)
-	}
-	f := int(file.Fd())
-	err = unix.SetNonblock(f, true)
-	if err != nil {
-		log.Error().Msgf("got error while setting socket options O_NONBLOCK: %+v", err)
-	}
-	err = syscall.SetsockoptInt(f, syscall.SOL_SOCKET, syscall.SO_RCVBUF, 8192)
-	if err != nil {
-		log.Error().Msgf("got error while setting socket options SO_RCVBUF: %+v", err)
-	}
-	err = syscall.SetsockoptInt(f, syscall.SOL_SOCKET, syscall.SO_SNDBUF, 8192)
-	if err != nil {
-		log.Error().Msgf("got error while setting socket options SO_SNDBUF: %+v", err)
 	}
 }
 

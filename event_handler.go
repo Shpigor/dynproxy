@@ -5,20 +5,22 @@ import (
 	"sync"
 )
 
-type EventHandler interface {
+type NetEventHandler interface {
 	// ReadEvent Handle read events received from polling
-	ReadEvent(stream Stream, dir Direction) error
+	ReadEvent(session Session, fd int) error
 	// ErrorEvent Handle error events received from polling
-	ErrorEvent(stream Stream, errors []error) error
+	ErrorEvent(session Session, errors []error) error
+
+	GetBuffer() []byte
 }
 
-type StreamProvider interface {
-	FindStreamByFd(fd int) (Stream, Direction)
-	AddStream(stream Stream)
-	RemoveStream(stream Stream)
+type SessionHolder interface {
+	FindSessionByFd(fd int) (Session, error)
+	AddSession(session Session)
+	RemoveSession(session Session)
 }
 
-func NewBufferHandler() EventHandler {
+func NewBufferHandler() NetEventHandler {
 	return &bufferHandler{
 		bb: make([]byte, 4096),
 	}
@@ -28,63 +30,63 @@ type bufferHandler struct {
 	bb []byte
 }
 
-func (h *bufferHandler) ReadEvent(stream Stream, dir Direction) error {
-	if stream == nil {
-		return noStreamFound
+func (h *bufferHandler) ReadEvent(session Session, fd int) error {
+	if session == nil {
+		return noSessionFound
 	}
-	return stream.ProcessRead(dir, h.bb)
+	return session.ProcessRead(fd, h.bb)
 }
 
-func (h *bufferHandler) ErrorEvent(stream Stream, errors []error) error {
-	if stream != nil {
-		err := stream.Close()
+func (h *bufferHandler) ErrorEvent(session Session, errors []error) error {
+	if session != nil {
+		err := session.Close()
 		if err != nil {
-			log.Error().Msgf("got error while close stream: %+v", err)
+			log.Error().Msgf("got error while close session: %+v", err)
 			return err
 		}
 	}
-	return closedStream
+	return closedSession
+}
+func (h *bufferHandler) GetBuffer() []byte {
+	return h.bb
 }
 
-func NewMapStreamProvider() StreamProvider {
-	return &mapStreamProvider{
-		lock:    &sync.RWMutex{},
-		streams: make(map[int]Stream),
+func NewMapStreamProvider() SessionHolder {
+	return &mapSessionHolder{
+		lock:     &sync.RWMutex{},
+		sessions: make(map[int]Session),
 	}
 }
 
-type mapStreamProvider struct {
-	lock    *sync.RWMutex
-	streams map[int]Stream
+type mapSessionHolder struct {
+	lock     *sync.RWMutex
+	sessions map[int]Session
 }
 
-func (sp *mapStreamProvider) FindStreamByFd(fd int) (Stream, Direction) {
+func (sp *mapSessionHolder) FindSessionByFd(fd int) (Session, error) {
 	sp.lock.RLock()
 	defer sp.lock.RUnlock()
-	stream, ok := sp.streams[fd]
+	session, ok := sp.sessions[fd]
 	if ok {
-		if fd == stream.GetFd(From) {
-			return stream, From
-		}
-		return stream, To
+		return session, nil
 	}
-	return nil, 0
+	return nil, noSessionFound
 }
 
-func (sp *mapStreamProvider) AddStream(stream Stream) {
+func (sp *mapSessionHolder) AddSession(session Session) {
 	sp.lock.Lock()
 	defer sp.lock.Unlock()
-	fds := stream.GetFds()
+	fds := session.GetFds()
 	for _, fd := range fds {
-		sp.streams[fd] = stream
+		sp.sessions[fd] = session
 	}
 }
 
-func (sp *mapStreamProvider) RemoveStream(stream Stream) {
+func (sp *mapSessionHolder) RemoveSession(session Session) {
 	sp.lock.Lock()
 	defer sp.lock.Unlock()
-	fds := stream.GetFds()
+	fds := session.GetFds()
 	for _, fd := range fds {
-		delete(sp.streams, fd)
+		delete(sp.sessions, fd)
 	}
 }
