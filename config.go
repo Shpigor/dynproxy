@@ -25,6 +25,7 @@ type FrontendConfig struct {
 	OcspResponderUrl       string `yaml:"ocsp_responder_url" toml:"ocsp_responder_url"`
 	OcspCacheEnabled       bool   `yaml:"ocsp_cache_enabled" toml:"ocsp_cache_enabled"`
 	OcspAutoRenewalEnabled bool   `yaml:"ocsp_auto_renewal_enabled" toml:"ocsp_auto_renewal_enabled"`
+	OcspValidationEnabled  bool   `yaml:"ocsp_validation_enabled" toml:"ocsp_validation_enabled"`
 }
 
 type BackendGroup struct {

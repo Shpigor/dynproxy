@@ -52,4 +52,12 @@ func setTlsSocketOptions(fd int) {
 	if err != nil {
 		log.Error().Msgf("got error while setting socket options SO_SNDBUF: %+v", err)
 	}
+	err = unix.SetsockoptInt(fd, unix.SOL_SOCKET, unix.SO_INCOMING_CPU, 0)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_INCOMING_CPU: %+v", err)
+	}
+
+	//SO_KEEPALIVE
+	//SO_REUSEPORT
+	//SO_REUSEADDR
 }

@@ -10,10 +10,11 @@
   tls_cert_path="/home/igor/ca/server.crt"
   tls_pk_path="/home/igor/ca/server.pk"
   backend_group="snmp-transports"
-  ocsp_staple_enabled=false
+  ocsp_staple_enabled=true
   ocsp_responder_url="http://10.0.0.81:7777/"
-  ocsp_cache_enabled=false
+  ocsp_cache_enabled=true
   ocsp_auto_renewal_enabled=false
+  ocsp_validation_enabled=true
 
 [[backends]]
   name="snmp-transports"

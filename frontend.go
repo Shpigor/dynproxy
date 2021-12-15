@@ -108,7 +108,22 @@ func (f *Frontend) getFrontendCert(info *tls.ClientHelloInfo) (*tls.Certificate,
 }
 
 func (f *Frontend) verifyClientCert(rawCerts [][]byte, verifiedChains [][]*x509.Certificate) error {
-	_, err := x509.ParseCertificate(rawCerts[0])
+	var err error
+	if verifiedChains != nil {
+		certificates := verifiedChains[0]
+		if len(certificates) >= 2 {
+			clientCert := certificates[0]
+			caCert := certificates[1]
+			if !caCert.IsCA && clientCert.IsCA {
+				err = f.ocspProc.OcspVerify(caCert, clientCert)
+			} else {
+				err = f.ocspProc.OcspVerify(clientCert, caCert)
+			}
+			if err == lazyLoadStaple { // soft error
+				return nil
+			}
+		}
+	}
 	return err
 }
 
@@ -140,7 +155,7 @@ func (f *Frontend) addOcspStaple(cert *tls.Certificate, caCert *x509.Certificate
 		if err != nil {
 			return err
 		}
-		ocspStaple, err := f.ocspProc.OcspVerify(x509Cert, caCert)
+		ocspStaple, err := f.ocspProc.GetOcspStaple(x509Cert, caCert)
 		if err != nil {
 			return err
 		}

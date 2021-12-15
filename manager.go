@@ -37,6 +37,7 @@ func NewContextManager(ctx context.Context) *ContextManager {
 }
 
 func (cm *ContextManager) InitFrontends(config Config) {
+	//processor := NewOcspProcessor(context.WithValue(cm.ctx, "name", "OCSP"), frConfig, cm.events)
 	for _, frConfig := range config.Frontends {
 		frCtx := context.WithValue(cm.ctx, "name", frConfig.Name)
 		frontend := Frontend{
@@ -46,7 +47,7 @@ func (cm *ContextManager) InitFrontends(config Config) {
 			Name:            frConfig.Name,
 			connChannel:     cm.newFrontConn,
 			defaultBalancer: frConfig.BackendGroup,
-			ocspProc:        NewOcspProcessor(context.WithValue(frCtx, "name", "OCSP"), frConfig),
+			ocspProc:        NewOcspProcessor(context.WithValue(cm.ctx, "name", "OCSP"), frConfig, cm.events),
 			TlsConfig: &TlsConfig{
 				SkipVerify: frConfig.TlsSkipVerify,
 				CACertPath: frConfig.TlsCACertPath,
@@ -83,7 +84,7 @@ func (cm *ContextManager) start() {
 				session.Init(cm.handler.GetBuffer())
 			}
 		case event := <-cm.events:
-			log.Debug().Msgf("received stream event: %+v", event)
+			log.Debug().Msgf("received event: %+v", event)
 		}
 	}
 }
