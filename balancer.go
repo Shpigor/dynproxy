@@ -6,6 +6,13 @@ import (
 	"net"
 )
 
+const (
+	SingleServerStrategy    = 0
+	JumpHashStrategy        = 1
+	RoundRobinStrategy      = 2
+	LeastConnectionStrategy = 3
+)
+
 var balancers map[string]*Balancer
 
 type Balancer struct {
