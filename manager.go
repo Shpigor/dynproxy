@@ -25,7 +25,7 @@ func NewContextManager(ctx context.Context) *ContextManager {
 	}
 	cm := &ContextManager{
 		ctx:           ctx,
-		sessionHolder: NewMapStreamProvider(),
+		sessionHolder: NewMapSessionProvider(context.WithValue(ctx, "name", "session holder")),
 		handler:       NewBufferHandler(),
 		newFrontConn:  make(chan *newConn, 256),
 		events:        make(chan Event, 128),
@@ -85,6 +85,9 @@ func (cm *ContextManager) start() {
 			}
 		case event := <-cm.events:
 			log.Debug().Msgf("received event: %+v", event)
+			if event.Type == OcspValidationError {
+				//cm.sessionHolder.RemoveSession()
+			}
 		}
 	}
 }

@@ -23,6 +23,13 @@ type FrontendStats struct {
 	Bandwidth          float64
 }
 
+type SessionStats struct {
+	Name               string
+	LastActivityTime   int64
+	TotalSentBytes     uint64
+	TotalReceivedBytes uint64
+}
+
 type BalancerStats struct {
 	Name string
 }

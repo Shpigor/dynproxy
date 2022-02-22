@@ -1,8 +1,10 @@
 package dynproxy
 
 import (
+	"context"
 	"github.com/rs/zerolog/log"
 	"sync"
+	"time"
 )
 
 type NetEventHandler interface {
@@ -42,7 +44,6 @@ func (h *bufferHandler) ErrorEvent(session Session, errors []error) error {
 		err := session.Close()
 		if err != nil {
 			log.Error().Msgf("got error while close session: %+v", err)
-			return err
 		}
 	}
 	return closedSession
@@ -51,14 +52,18 @@ func (h *bufferHandler) GetBuffer() []byte {
 	return h.bb
 }
 
-func NewMapStreamProvider() SessionHolder {
-	return &mapSessionHolder{
+func NewMapSessionProvider(ctx context.Context) SessionHolder {
+	sessionHolder := &mapSessionHolder{
+		ctx:      ctx,
 		lock:     &sync.RWMutex{},
 		sessions: make(map[int]Session),
 	}
+	go sessionHolder.init()
+	return sessionHolder
 }
 
 type mapSessionHolder struct {
+	ctx      context.Context
 	lock     *sync.RWMutex
 	sessions map[int]Session
 }
@@ -88,5 +93,24 @@ func (sp *mapSessionHolder) RemoveSession(session Session) {
 	fds := session.GetFds()
 	for _, fd := range fds {
 		delete(sp.sessions, fd)
+	}
+}
+
+func (sp *mapSessionHolder) init() {
+	ticker := time.NewTicker(20 * time.Second)
+	for {
+		select {
+		case <-sp.ctx.Done():
+			return
+		case <-ticker.C:
+			sp.lock.RLock()
+			log.Debug().Msgf("Total sessions: %d", len(sp.sessions))
+			for _, session := range sp.sessions {
+				fds := session.GetFds()
+				stats := session.GetStats()
+				log.Debug().Msgf("%v session:[%s] lastActiveTime: %d sent: %d received: %d", fds, session.GetId(), stats.LastActivityTime, stats.TotalSentBytes, stats.TotalReceivedBytes)
+			}
+			sp.lock.RUnlock()
+		}
 	}
 }

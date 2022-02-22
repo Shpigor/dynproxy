@@ -51,33 +51,37 @@ func (p *Poller) waitForEvents(handler NetEventHandler, provider SessionHolder) 
 	for i := 0; i < evCount; i++ {
 		event := p.events[i]
 		fd := int(event.Fd)
-		log.Debug().Msgf("Event fd:%d", event)
-		stream, err := provider.FindSessionByFd(fd)
+		log.Debug().Msgf("[%d] epoll event:%d", fd, event)
+		session, err := provider.FindSessionByFd(fd)
 		if err != nil {
 			err := p.deletePoll(fd)
 			if err != nil {
-				log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
+				log.Error().Msgf("[%d] error occurs while detaching fd from netpoll: %v", fd, err)
 			}
 			continue
 		}
 		if readEvents&event.Events > 0 {
-			err = handler.ReadEvent(stream, fd)
+			err = handler.ReadEvent(session, fd)
 		}
 		if errorEvents&event.Events > 0 {
-			err = handler.ErrorEvent(stream, parseErrors(event.Events))
+			err = handler.ErrorEvent(session, parseErrors(event.Events))
 		}
 		if err != nil {
-			if err != closedSession {
-				log.Error().Msgf("error occurs in event-loop: %v", err)
-			}
-			fds := stream.GetFds()
+			fds := session.GetFds()
 			for _, fd := range fds {
 				err := p.deletePoll(fd)
 				if err != nil {
-					log.Error().Msgf("error occurs while detaching fd from netpoll: %v", err)
+					log.Error().Msgf("[%d] error occurs while detaching fd from netpoll: %v", fd, err)
 				}
 			}
-			provider.RemoveSession(stream)
+			if err != closedSession {
+				log.Error().Msgf("[%d] error occurs in event-loop: %v", fd, err)
+				err := session.Close()
+				if err != nil {
+					log.Error().Msgf("[%d] error occurs while closing session: %v", fd, err)
+				}
+			}
+			provider.RemoveSession(session)
 		}
 	}
 	return evCount, nil

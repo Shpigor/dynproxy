@@ -13,6 +13,8 @@ import (
 	"io/ioutil"
 	"log"
 	"net"
+	"sync"
+	"time"
 )
 
 var useTls bool
@@ -44,14 +46,17 @@ func init() {
 }
 
 func main() {
+	group := &sync.WaitGroup{}
 	for i := 0; i < 5; i++ {
+		group.Add(1)
 		conn, err := openConnection()
 		if err != nil {
 			log.Fatalf("got error while connecting to tcp server: %+v", err)
 		}
 		message := fmt.Sprintf("Hello: %d", i)
-		processConnection(message, conn)
+		go processConnection(group, message, conn)
 	}
+	group.Wait()
 }
 
 func openConnection() (net.Conn, error) {
@@ -104,7 +109,7 @@ func parseCertFile(filename string) (*x509.Certificate, error) {
 	return cert, nil
 }
 
-func processConnection(msg string, conn net.Conn) {
+func processConnection(group *sync.WaitGroup, msg string, conn net.Conn) {
 	buffer := make([]byte, 1024)
 	message := []byte(msg)
 	_, err := conn.Write(message)
@@ -121,6 +126,8 @@ func processConnection(msg string, conn net.Conn) {
 			log.Printf("got timeout while verifying message signature:%+v", err)
 		}
 	}
+	<-time.After(60 * time.Second)
+	group.Done()
 	defer conn.Close()
 }
 

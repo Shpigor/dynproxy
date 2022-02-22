@@ -5,6 +5,7 @@ import (
 )
 
 type Session interface {
+	//
 	Init(buffer []byte) error
 	//
 	ProcessRead(fd int, buffer []byte) error
@@ -15,6 +16,9 @@ type Session interface {
 	//
 	Close() error
 	//
+	GetId() string
+	//
+	GetStats() SessionStats
 }
 
 func generateId(src, dst net.Conn) string {

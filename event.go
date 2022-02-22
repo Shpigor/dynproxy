@@ -5,6 +5,11 @@ import (
 	"time"
 )
 
+const (
+	OcspValidationError           = 500
+	UnavailableOcspResponderError = 503
+)
+
 type Event struct {
 	Id        string
 	Timestamp int64
@@ -15,10 +20,11 @@ type Event struct {
 	Msg       string
 }
 
-func genOcspErrorEvent(id string, err error, msg string) Event {
+func genOcspErrorEvent(id string, errorType int, err error, msg string) Event {
 	return Event{
 		Id:        id,
 		Timestamp: time.Now().UnixMilli(),
+		Type:      errorType,
 		Err:       err,
 		Msg:       msg,
 	}

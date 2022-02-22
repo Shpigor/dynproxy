@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
@@ -54,7 +55,7 @@ func main() {
 		address:   address,
 		pk:        pk,
 		wg:        wg,
-		streams:   dynproxy.NewMapStreamProvider(),
+		streams:   dynproxy.NewMapSessionProvider(context.Background()),
 		handler:   dynproxy.NewBufferHandler(),
 		eventChan: make(chan dynproxy.Event, 100),
 	}

@@ -66,6 +66,8 @@ func getConnByBalancerName(name string) (net.Conn, error) {
 
 func (b *Balancer) getNextBackendConn() (net.Conn, error) {
 	if len(b.Backends) > 0 {
+		// todo: need to use ipaddress of the frontend connection
+		//backend := b.Backends[JumpHash(uint64(time.Now().UnixNano()), len(b.Backends))]
 		backend := b.Backends[0]
 		conn, err := backend.getBackendConn()
 		if err != nil {

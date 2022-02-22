@@ -37,6 +37,22 @@ func setTcpSocketOptions(fd int) {
 	if err != nil {
 		log.Error().Msgf("got error while setting socket options SO_SNDBUF: %+v", err)
 	}
+	err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_REUSEADDR: %+v", err)
+	}
+	err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_REUSEPORT: %+v", err)
+	}
+	err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_KEEPALIVE: %+v", err)
+	}
+	err = syscall.SetsockoptLinger(fd, syscall.SOL_SOCKET, syscall.SO_LINGER, &syscall.Linger{Onoff: 0, Linger: 0})
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_LINGER: %+v", err)
+	}
 }
 
 func setTlsSocketOptions(fd int) {
@@ -56,8 +72,20 @@ func setTlsSocketOptions(fd int) {
 	if err != nil {
 		log.Error().Msgf("got error while setting socket options SO_INCOMING_CPU: %+v", err)
 	}
-
-	//SO_KEEPALIVE
-	//SO_REUSEPORT
-	//SO_REUSEADDR
+	err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_REUSEADDR: %+v", err)
+	}
+	err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_REUSEPORT: %+v", err)
+	}
+	err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_KEEPALIVE, 1)
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_KEEPALIVE: %+v", err)
+	}
+	err = syscall.SetsockoptLinger(fd, syscall.SOL_SOCKET, syscall.SO_LINGER, &syscall.Linger{Onoff: 0, Linger: 0})
+	if err != nil {
+		log.Error().Msgf("got error while setting socket options SO_LINGER: %+v", err)
+	}
 }

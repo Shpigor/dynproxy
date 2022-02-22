@@ -5,16 +5,16 @@
   name="snmp"
   net="tcp"
   address="10.0.0.81:2030"
-  tls_skip_verify=false
+  tls_skip_verify=true
   tls_ca_cert_path="/home/igor/ca/ca-cert.crt"
   tls_cert_path="/home/igor/ca/server.crt"
   tls_pk_path="/home/igor/ca/server.pk"
   backend_group="snmp-transports"
-  ocsp_staple_enabled=true
+  ocsp_staple_enabled=false
   ocsp_responder_url="http://10.0.0.81:7777/"
-  ocsp_cache_enabled=true
+  ocsp_cache_enabled=false
   ocsp_auto_renewal_enabled=false
-  ocsp_validation_enabled=true
+  ocsp_validation_enabled=false
 
 [[backends]]
   name="snmp-transports"

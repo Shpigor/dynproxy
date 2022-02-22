@@ -64,11 +64,11 @@ func (p *OCSPProcessor) OcspVerify(cert, issuer *x509.Certificate) error {
 func (p *OCSPProcessor) backgroundOcspVerify(cert, issuer *x509.Certificate) {
 	ocspResp, rawResp, err := p.ocspRequest(cert, issuer)
 	if err != nil {
-		p.events <- genOcspErrorEvent(cert.SerialNumber.String(), err, "ocsp request error, kill session")
+		p.events <- genOcspErrorEvent(cert.SerialNumber.String(), UnavailableOcspResponderError, err, "ocsp request error.")
 	} else {
 		err = p.processOcspResponse(ocspResp.SerialNumber, ocspResp.Status, cert)
 		if err != nil {
-			p.events <- genOcspErrorEvent(cert.SerialNumber.String(), err, "ocsp parse error, kill session")
+			p.events <- genOcspErrorEvent(cert.SerialNumber.String(), OcspValidationError, err, "ocsp parse error, kill session")
 		}
 	}
 	if p.ocspCacheEnabled {

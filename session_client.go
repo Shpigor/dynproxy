@@ -53,6 +53,14 @@ func (s *clientSession) GetFds() []int {
 	return []int{s.fd}
 }
 
+func (s *clientSession) GetId() string {
+	return s.id
+}
+
+func (s *clientSession) GetStats() SessionStats {
+	return SessionStats{}
+}
+
 func echo(src, dst net.Conn, buffer []byte) error {
 	read, err := src.Read(buffer)
 	if err != nil {
