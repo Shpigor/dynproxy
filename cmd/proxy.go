@@ -41,6 +41,10 @@ func main() {
 	manager := dynproxy.NewContextManager(mainCtx)
 	dynproxy.InitBalancers(mainCtx, config)
 	manager.InitFrontends(config)
+	if config {
+		dynproxy.InitEventRouter(mainCtx, config)
+	}
+
 	<-sigOsChan
 	mainCancelFn()
 	log.Info().Msg("proxy stopped")

@@ -19,13 +19,22 @@ const (
 	allEvents        = readEvents | errorEvents | writeEvents
 )
 
-func openPoller(eventsBufferSize int) (*Poller, error) {
+type LinuxPoller struct {
+	eventBufferSize int
+	eventQueueSize  int
+	fd              int
+	lockOSThread    bool
+	events          []unix.EpollEvent
+	timeout         int
+}
+
+func OpenPoller(eventsBufferSize int) (Poller, error) {
 	fd, err := unix.EpollCreate1(unix.EPOLL_CLOEXEC)
 	if err != nil {
 		return nil, os.NewSyscallError("epoll_create1", err)
 	}
 	bufferSize := int(math.Max(float64(eventsBufferSize), defEventsBufferSize))
-	return &Poller{
+	return &LinuxPoller{
 		eventBufferSize: bufferSize,
 		fd:              fd,
 		timeout:         blocked,
@@ -33,14 +42,14 @@ func openPoller(eventsBufferSize int) (*Poller, error) {
 	}, nil
 }
 
-func (p *Poller) close() {
+func (p *Poller) Close() {
 	err := os.NewSyscallError("close", unix.Close(p.fd))
 	if err != nil {
 		log.Error().Msgf("got error while closing epoll: %+v", err)
 	}
 }
 
-func (p *Poller) waitForEvents(handler NetEventHandler, provider SessionHolder) (int, error) {
+func (p *Poller) WaitForEvents(handler NetEventHandler, provider SessionHolder) (int, error) {
 	evCount, err := epollWait(p.fd, p.events, p.timeout)
 	if evCount == 0 || (evCount < 0 && err == unix.EINTR) {
 		runtime.Gosched()
@@ -94,7 +103,7 @@ func parseErrors(events uint32) []error {
 	return nil
 }
 
-func (p *Poller) addReadErrors(fd int) error {
+func (p *Poller) AddReadErrors(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add read|errors epoll for fd: %d", fd)
 	}
@@ -105,7 +114,7 @@ func (p *Poller) addReadErrors(fd int) error {
 	return nil
 }
 
-func (p *Poller) addReadWrite(fd int) error {
+func (p *Poller) AddReadWrite(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add read|write epoll for fd: %d", fd)
 	}
@@ -116,7 +125,7 @@ func (p *Poller) addReadWrite(fd int) error {
 	return nil
 }
 
-func (p *Poller) addRead(fd int) error {
+func (p *Poller) AddRead(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add read epoll for fd: %d", fd)
 	}
@@ -127,7 +136,7 @@ func (p *Poller) addRead(fd int) error {
 	return nil
 }
 
-func (p *Poller) addWrite(fd int) error {
+func (p *Poller) AddWrite(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add write epoll for fd: %d", fd)
 	}
@@ -138,7 +147,7 @@ func (p *Poller) addWrite(fd int) error {
 	return nil
 }
 
-func (p *Poller) deletePoll(fd int) error {
+func (p *Poller) DeletePoll(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("delete epoll for fd: %d", fd)
 	}
@@ -149,7 +158,7 @@ func (p *Poller) deletePoll(fd int) error {
 	return nil
 }
 
-func (p *Poller) addError(fd int) error {
+func (p *Poller) AddError(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add error epoll for fd: %d", fd)
 	}

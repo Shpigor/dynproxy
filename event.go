@@ -11,13 +11,13 @@ const (
 )
 
 type Event struct {
-	Id        string
-	Timestamp int64
-	Type      int
-	MetaData  map[string]interface{}
-	Tags      []string
-	Err       error
-	Msg       string
+	Id        string                 `json:"id"`
+	Timestamp int64                  `json:"timestamp"`
+	Type      int                    `json:"type"`
+	MetaData  map[string]interface{} `json:"metaData"`
+	Tags      []string               `json:"tags"`
+	Err       error                  `json:"error"`
+	Msg       string                 `json:"msg"`
 }
 
 func genOcspErrorEvent(id string, errorType int, err error, msg string) Event {

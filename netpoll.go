@@ -1,9 +1,5 @@
 package dynproxy
 
-import (
-	"golang.org/x/sys/unix"
-)
-
 const (
 	defEventsBufferSize = 128
 	blocked             = -1
@@ -15,13 +11,12 @@ type PollerConfig struct {
 	EventQueueSize  int
 }
 
-type Poller struct {
-	eventBufferSize int
-	eventQueueSize  int
-	fd              int
-	lockOSThread    bool
-	events          []unix.EpollEvent
-	timeout         int
+type Poller interface {
+	WaitForEvents(handler NetEventHandler, holder SessionHolder) (int, error)
+	AddRead(fd int) error
+	AddReadErrors(fd int) error
+	DeletePoll(fd int) error
+	Close()
 }
 
 type SocketEvent struct {

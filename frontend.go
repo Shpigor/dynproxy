@@ -7,8 +7,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"github.com/rs/zerolog/log"
+	"github.com/segmentio/ksuid"
 	"io/ioutil"
 	"net"
+	"time"
 )
 
 type Frontend struct {
@@ -71,6 +73,12 @@ func (f *Frontend) handleTlsAccept(listener net.Listener) {
 			if err != nil {
 				log.Error().Msgf("TLS handshake error: %+v", err)
 				tlsConn.Close()
+				event := &Event{
+					Id:        ksuid.New().String(),
+					Timestamp: time.Now().UnixMilli(),
+					Msg:       err.Error(),
+					MetaData:  map[string]interface{}{"device": tlsConn.RemoteAddr().String()},
+				}
 				// TODO: notify about client error
 				continue
 			}
