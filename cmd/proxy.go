@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 )
 
@@ -26,10 +27,27 @@ func init() {
 }
 
 func initLog(config dynproxy.Config) {
-	zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
 	if &config.Global != nil {
-		// TODO: parse log level
-		zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		if config.Global.LogTimestamp {
+			zerolog.TimeFieldFormat = zerolog.TimeFormatUnixMs
+		}
+		logLevel := strings.ToLower(config.Global.LogLevel)
+		switch logLevel {
+		case "error":
+			zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+		case "warn":
+			zerolog.SetGlobalLevel(zerolog.WarnLevel)
+		case "debug":
+			zerolog.SetGlobalLevel(zerolog.DebugLevel)
+		case "trace":
+			zerolog.SetGlobalLevel(zerolog.TraceLevel)
+		case "disabled":
+			zerolog.SetGlobalLevel(zerolog.Disabled)
+		case "info":
+			fallthrough
+		default:
+			zerolog.SetGlobalLevel(zerolog.InfoLevel)
+		}
 	}
 }
 
@@ -40,11 +58,8 @@ func main() {
 	mainCtx, mainCancelFn := context.WithCancel(context.Background())
 	manager := dynproxy.NewContextManager(mainCtx)
 	dynproxy.InitBalancers(mainCtx, config)
-	manager.InitFrontends(config)
-	if config {
-		dynproxy.InitEventRouter(mainCtx, config)
-	}
-
+	dynproxy.InitFrontends(mainCtx, config, manager.GetEventChannel())
+	dynproxy.InitEventRouter(mainCtx, config.Global)
 	<-sigOsChan
 	mainCancelFn()
 	log.Info().Msg("proxy stopped")
@@ -62,7 +77,7 @@ func handleSysSignals(exitChan chan int) {
 			log.Info().Msg("Signal interrupt triggered.")
 			exitChan <- 0
 		case syscall.SIGTERM: // kill -SIGTERM PID
-			log.Info().Msg("Signal terminte triggered.")
+			log.Info().Msg("Signal terminate triggered.")
 			exitChan <- 0
 		case syscall.SIGQUIT: // kill -SIGQUIT PID
 			log.Info().Msg("Signal quit triggered.")

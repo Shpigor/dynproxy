@@ -1,5 +1,11 @@
 [global]
-  log_level="debug"
+  log_level="info"
+  log_timestamp=false
+  enable_event_router=true
+
+[global.event_router]
+  event_kafka_brokers="kafka:9092"
+  event_kafka_topic="lb_events"
 
 [[frontends]]
   name="snmp"

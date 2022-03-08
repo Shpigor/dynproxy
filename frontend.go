@@ -20,7 +20,7 @@ type Frontend struct {
 	Name            string
 	defaultBalancer string
 	TlsConfig       *TlsConfig
-	connChannel     chan *newConn
+	connChannel     chan *Event
 	ocspProc        *OCSPProcessor
 }
 
@@ -74,11 +74,14 @@ func (f *Frontend) handleTlsAccept(listener net.Listener) {
 				log.Error().Msgf("TLS handshake error: %+v", err)
 				tlsConn.Close()
 				event := &Event{
-					Id:        ksuid.New().String(),
+					id:        ksuid.New().String(),
 					Timestamp: time.Now().UnixMilli(),
-					Msg:       err.Error(),
-					MetaData:  map[string]interface{}{"device": tlsConn.RemoteAddr().String()},
+					Data:      map[string]string{"device": tlsConn.RemoteAddr().String()},
+					ErrorEvent: &ErrorEvent{
+						Msg: err.Error(),
+					},
 				}
+				log.Debug().Msgf("%v", event)
 				// TODO: notify about client error
 				continue
 			}
@@ -173,10 +176,7 @@ func (f *Frontend) addOcspStaple(cert *tls.Certificate, caCert *x509.Certificate
 }
 
 func (f *Frontend) handleNewConnection(conn net.Conn) {
-	f.connChannel <- &newConn{
-		frontend: conn,
-		backend:  f.defaultBalancer,
-	}
+	f.connChannel <- buildNewConnEvent(conn, f.defaultBalancer)
 }
 
 func parseCaCertFile(filename string) (*x509.Certificate, error) {

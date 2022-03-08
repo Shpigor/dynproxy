@@ -9,7 +9,10 @@ import (
 )
 
 type Global struct {
-	LogLevel string `yaml:"log_level" toml:"log_level"`
+	LogLevel          string                 `yaml:"log_level" toml:"log_level"`
+	LogTimestamp      bool                   `yaml:"log_timestamp" toml:"log_timestamp"`
+	EnableEventRouter bool                   `yaml:"enable_event_router" toml:"enable_event_router"`
+	EventRouter       map[string]interface{} `yaml:"event_router" toml:"event_router"`
 }
 
 type FrontendConfig struct {

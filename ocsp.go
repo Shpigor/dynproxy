@@ -32,10 +32,10 @@ type OCSPProcessor struct {
 	ocspAutoRenewalEnabled bool
 	ocspResponderUrl       string
 	cache                  *ristretto.Cache
-	events                 chan Event
+	events                 chan *Event
 }
 
-func NewOcspProcessor(ocspCtx context.Context, frConfig FrontendConfig, events chan Event) *OCSPProcessor {
+func NewOcspProcessor(ocspCtx context.Context, frConfig FrontendConfig, events chan *Event) *OCSPProcessor {
 	ocspProcessor := &OCSPProcessor{
 		ocspStapleEnabled:      frConfig.OcspStapleEnabled,
 		ocspValidationEnabled:  frConfig.OcspValidationEnabled,
@@ -64,11 +64,11 @@ func (p *OCSPProcessor) OcspVerify(cert, issuer *x509.Certificate) error {
 func (p *OCSPProcessor) backgroundOcspVerify(cert, issuer *x509.Certificate) {
 	ocspResp, rawResp, err := p.ocspRequest(cert, issuer)
 	if err != nil {
-		p.events <- genOcspErrorEvent(cert.SerialNumber.String(), UnavailableOcspResponderError, err, "ocsp request error.")
+		p.events <- buildOcspErrorEvent(cert.SerialNumber.String(), UnavailableOcspResponderError, err, "ocsp request error.")
 	} else {
 		err = p.processOcspResponse(ocspResp.SerialNumber, ocspResp.Status, cert)
 		if err != nil {
-			p.events <- genOcspErrorEvent(cert.SerialNumber.String(), OcspValidationError, err, "ocsp parse error, kill session")
+			p.events <- buildOcspErrorEvent(cert.SerialNumber.String(), OcspValidationError, err, "ocsp parse error, kill session")
 		}
 	}
 	if p.ocspCacheEnabled {

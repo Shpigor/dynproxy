@@ -18,16 +18,17 @@ type KafkaEventRouter struct {
 	producer *kafka.Writer
 }
 
-func InitEventRouter(ctx context.Context, conf map[string]interface{}) {
-	kafkaEventRouter := &KafkaEventRouter{
-		ctx: ctx,
+func InitEventRouter(ctx context.Context, conf Global) {
+	if conf.EnableEventRouter {
+		kafkaEventRouter := &KafkaEventRouter{
+			ctx: ctx,
+		}
+		err := kafkaEventRouter.configure(conf.EventRouter)
+		if err != nil {
+			log.Error().Msgf("got error while configuring kafka producer: %+v", err)
+		}
+		eventRouter = kafkaEventRouter
 	}
-	err := kafkaEventRouter.configure(conf)
-	if err != nil {
-
-	}
-	eventRouter = kafkaEventRouter
-
 }
 
 func (kef *KafkaEventRouter) Process(key string, event *Event) error {

@@ -28,7 +28,7 @@ type LinuxPoller struct {
 	timeout         int
 }
 
-func OpenPoller(eventsBufferSize int) (Poller, error) {
+func openPoller(eventsBufferSize int) (Poller, error) {
 	fd, err := unix.EpollCreate1(unix.EPOLL_CLOEXEC)
 	if err != nil {
 		return nil, os.NewSyscallError("epoll_create1", err)
@@ -42,14 +42,14 @@ func OpenPoller(eventsBufferSize int) (Poller, error) {
 	}, nil
 }
 
-func (p *Poller) Close() {
+func (p *LinuxPoller) Close() {
 	err := os.NewSyscallError("close", unix.Close(p.fd))
 	if err != nil {
 		log.Error().Msgf("got error while closing epoll: %+v", err)
 	}
 }
 
-func (p *Poller) WaitForEvents(handler NetEventHandler, provider SessionHolder) (int, error) {
+func (p *LinuxPoller) WaitForEvents(handler NetEventHandler, provider SessionHolder) (int, error) {
 	evCount, err := epollWait(p.fd, p.events, p.timeout)
 	if evCount == 0 || (evCount < 0 && err == unix.EINTR) {
 		runtime.Gosched()
@@ -63,7 +63,7 @@ func (p *Poller) WaitForEvents(handler NetEventHandler, provider SessionHolder) 
 		log.Debug().Msgf("[%d] epoll event:%d", fd, event)
 		session, err := provider.FindSessionByFd(fd)
 		if err != nil {
-			err := p.deletePoll(fd)
+			err := p.DeletePoll(fd)
 			if err != nil {
 				log.Error().Msgf("[%d] error occurs while detaching fd from netpoll: %v", fd, err)
 			}
@@ -78,7 +78,7 @@ func (p *Poller) WaitForEvents(handler NetEventHandler, provider SessionHolder) 
 		if err != nil {
 			fds := session.GetFds()
 			for _, fd := range fds {
-				err := p.deletePoll(fd)
+				err := p.DeletePoll(fd)
 				if err != nil {
 					log.Error().Msgf("[%d] error occurs while detaching fd from netpoll: %v", fd, err)
 				}
@@ -103,7 +103,7 @@ func parseErrors(events uint32) []error {
 	return nil
 }
 
-func (p *Poller) AddReadErrors(fd int) error {
+func (p *LinuxPoller) AddReadErrors(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add read|errors epoll for fd: %d", fd)
 	}
@@ -114,7 +114,7 @@ func (p *Poller) AddReadErrors(fd int) error {
 	return nil
 }
 
-func (p *Poller) AddReadWrite(fd int) error {
+func (p *LinuxPoller) AddReadWrite(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add read|write epoll for fd: %d", fd)
 	}
@@ -125,7 +125,7 @@ func (p *Poller) AddReadWrite(fd int) error {
 	return nil
 }
 
-func (p *Poller) AddRead(fd int) error {
+func (p *LinuxPoller) AddRead(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add read epoll for fd: %d", fd)
 	}
@@ -136,7 +136,7 @@ func (p *Poller) AddRead(fd int) error {
 	return nil
 }
 
-func (p *Poller) AddWrite(fd int) error {
+func (p *LinuxPoller) AddWrite(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add write epoll for fd: %d", fd)
 	}
@@ -147,7 +147,7 @@ func (p *Poller) AddWrite(fd int) error {
 	return nil
 }
 
-func (p *Poller) DeletePoll(fd int) error {
+func (p *LinuxPoller) DeletePoll(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("delete epoll for fd: %d", fd)
 	}
@@ -158,7 +158,7 @@ func (p *Poller) DeletePoll(fd int) error {
 	return nil
 }
 
-func (p *Poller) AddError(fd int) error {
+func (p *LinuxPoller) AddError(fd int) error {
 	if log.Debug().Enabled() {
 		log.Debug().Msgf("add error epoll for fd: %d", fd)
 	}

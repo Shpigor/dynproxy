@@ -6,33 +6,77 @@ import (
 )
 
 const (
-	OcspValidationError           = 500
-	UnavailableOcspResponderError = 503
+	NewConn EventType = iota
+	BackendStatus
+	Monitor
+	OcspValidationError
+	UnavailableOcspResponderError
 )
 
+type EventType int
+
 type Event struct {
-	Id        string                 `json:"id"`
-	Timestamp int64                  `json:"timestamp"`
-	Type      int                    `json:"type"`
-	MetaData  map[string]interface{} `json:"metaData"`
-	Tags      []string               `json:"tags"`
-	Err       error                  `json:"error"`
-	Msg       string                 `json:"msg"`
+	id           string
+	Timestamp    int64
+	Type         EventType
+	Data         map[string]string
+	MonitorEvent *MonitorEvent
+	ErrorEvent   *ErrorEvent
+	NewConnEvent *NewConnEvent
 }
 
-func genOcspErrorEvent(id string, errorType int, err error, msg string) Event {
-	return Event{
-		Id:        id,
+type MonitorEvent struct {
+	MetaData map[string]interface{}
+	Tags     []string
+}
+
+type ErrorEvent struct {
+	Err error
+	Msg string
+}
+
+type NewConnEvent struct {
+	frontConn net.Conn
+	backends  string
+}
+
+func (e *Event) Id() uint64 {
+	return 0
+}
+
+func (e *Event) IsNewConn() bool {
+	return e.Type == NewConn
+}
+
+func (e *Event) GetNewConn() *NewConnEvent {
+	return e.NewConnEvent
+}
+
+func (e Event) IsBackendStatus() bool {
+	return e.Type == BackendStatus
+}
+
+func buildOcspErrorEvent(id string, errorType EventType, err error, msg string) *Event {
+	return &Event{
+		id:        id,
 		Timestamp: time.Now().UnixMilli(),
 		Type:      errorType,
-		Err:       err,
-		Msg:       msg,
+		ErrorEvent: &ErrorEvent{
+			Err: err,
+			Msg: msg,
+		},
 	}
 }
 
-type newConn struct {
-	frontend net.Conn
-	backend  string
+func buildNewConnEvent(frontConn net.Conn, backends string) *Event {
+	return &Event{
+		Timestamp: time.Now().UnixMilli(),
+		Type:      NewConn,
+		NewConnEvent: &NewConnEvent{
+			frontConn: frontConn,
+			backends:  backends,
+		},
+	}
 }
 
 type status struct {

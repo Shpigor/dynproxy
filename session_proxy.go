@@ -12,7 +12,7 @@ type proxySession struct {
 	frontFd   int
 	backend   net.Conn
 	frontend  net.Conn
-	eventChan chan Event
+	eventChan chan *Event
 	stats     *proxySessionStats
 }
 
@@ -22,11 +22,11 @@ type proxySessionStats struct {
 	TotalReceivedBytes uint64
 }
 
-func NewDefaultProxySession(frontConn net.Conn, srvConn net.Conn, eventChan chan Event) (Session, error) {
+func NewDefaultProxySession(frontConn net.Conn, srvConn net.Conn, eventChan chan *Event) (Session, error) {
 	return NewProxySession(frontConn, srvConn, eventChan)
 }
 
-func NewProxySession(frontConn net.Conn, backendConn net.Conn, eventChan chan Event) (Session, error) {
+func NewProxySession(frontConn net.Conn, backendConn net.Conn, eventChan chan *Event) (Session, error) {
 	frontFd, _, err := ConnToFileDesc(frontConn)
 	if err != nil {
 		return nil, err

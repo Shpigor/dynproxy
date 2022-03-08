@@ -23,6 +23,10 @@ type Balancer struct {
 	updateChannel chan status
 }
 
+type IdProvider interface {
+	Id() uint64
+}
+
 func InitBalancers(ctx context.Context, config Config) {
 	balancers = make(map[string]*Balancer)
 	for _, balancerConfig := range config.Backends {
@@ -56,22 +60,20 @@ func InitBalancers(ctx context.Context, config Config) {
 	}
 }
 
-func getConnByBalancerName(name string) (net.Conn, error) {
+func getConnByBalancerName(name string, id IdProvider) (net.Conn, error) {
 	balancer, ok := balancers[name]
 	if !ok {
 		return nil, balancerNotFound
 	}
-	return balancer.getNextBackendConn()
+	return balancer.getNextBackendConn(id)
 }
 
-func (b *Balancer) getNextBackendConn() (net.Conn, error) {
+func (b *Balancer) getNextBackendConn(id IdProvider) (net.Conn, error) {
 	if len(b.Backends) > 0 {
-		// todo: need to use ipaddress of the frontend connection
-		//backend := b.Backends[JumpHash(uint64(time.Now().UnixNano()), len(b.Backends))]
-		backend := b.Backends[0]
+		backend := b.Backends[JumpHash(id.Id(), len(b.Backends))]
 		conn, err := backend.getBackendConn()
 		if err != nil {
-			return nil, nil
+			return nil, err
 		}
 		setSocketOptions(conn)
 		return conn, nil

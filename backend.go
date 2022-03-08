@@ -15,6 +15,8 @@ const (
 	disabled = 0
 )
 
+type BackendState int
+
 type Backend struct {
 	ctx           context.Context
 	Name          string
@@ -24,6 +26,12 @@ type Backend struct {
 	HealthCheck   *HealthCheck
 	checkBuf      []byte
 	updateChannel chan status
+}
+
+type HealthStatus struct {
+	LastCheckTs uint64
+	Latency     int
+	state       BackendState
 }
 
 type HealthCheck struct {
